@@ -29,15 +29,15 @@ def build_2290_xml(data):
 
     # ReturnHeader
     hdr = SubElement(filer, 'ReturnHeader')
-    SubElement(hdr, 'BusinessName').text    = data.get('business_name', '')
-    SubElement(hdr, 'EIN').text             = data.get('ein', '')
-    SubElement(hdr, 'Address').text         = data.get('address', '')
+    SubElement(hdr, 'BusinessName').text    = str(data.get('business_name', ''))
+    SubElement(hdr, 'EIN').text             = str(data.get('ein', ''))
+    SubElement(hdr, 'Address').text         = str(data.get('address', ''))
     city = data.get('city', '')
     state = data.get('state', '')
     zipc = data.get('zip', '')
     SubElement(hdr, 'CityStateZip').text   = f"{city}, {state}, {zipc}"
-    SubElement(hdr, 'TaxYear').text         = data.get('tax_year', '')
-    SubElement(hdr, 'UsedOnDate').text      = data.get('used_on_july', '')
+    SubElement(hdr, 'TaxYear').text         = str(data.get('tax_year', ''))
+    SubElement(hdr, 'UsedOnDate').text      = str(data.get('used_on_july', ''))
     SubElement(hdr, 'AddressChange').text   = str(data.get('address_change', False)).lower()
     SubElement(hdr, 'AmendedReturn').text   = str(data.get('amended_return', False)).lower()
     SubElement(hdr, 'VINCorrection').text   = str(data.get('vin_correction', False)).lower()
@@ -47,9 +47,9 @@ def build_2290_xml(data):
     vehicles_el = SubElement(filer, 'Vehicles')
     for v in data.get('vehicles', []):
         ve = SubElement(vehicles_el, 'Vehicle')
-        SubElement(ve, 'VIN').text            = v.get('vin', '')
-        SubElement(ve, 'Category').text       = v.get('category', '')
-        SubElement(ve, 'UsedMonth').text      = v.get('used_month', '')
+        SubElement(ve, 'VIN').text            = str(v.get('vin', ''))
+        SubElement(ve, 'Category').text       = str(v.get('category', ''))
+        SubElement(ve, 'UsedMonth').text      = str(v.get('used_month', ''))
         SubElement(ve, 'IsLogging').text      = str(v.get('is_logging', False)).lower()
         SubElement(ve, 'IsSuspended').text    = str(v.get('is_suspended', False)).lower()
         SubElement(ve, 'IsAgricultural').text = str(v.get('is_agricultural', False)).lower()
@@ -57,36 +57,39 @@ def build_2290_xml(data):
         # Tax calculation
         is_susp = v.get('is_suspended', False)
         is_agri = v.get('is_agricultural', False)
-        mon     = int(v.get('used_month','')[-2:] or 7)
-        rate    = logging_rates[v['category']] if v.get('is_logging') else full_rates[v['category']]
+        # If UsedMonth is passed as "1" or actually an int, this will cast safely:
+        mon = int(v.get('used_month', 7))
+        rate = logging_rates[v['category']] if v.get('is_logging') else full_rates[v['category']]
         if is_susp or is_agri:
             tax = 0.0
         elif mon == 7:
             tax = rate
         else:
             months_left = 13 - mon
-            if months_left < 0: months_left += 12
+            if months_left < 0:
+                months_left += 12
             tax = round((rate * months_left) / 12, 2)
+
         SubElement(ve, 'TaxAmount').text = f"{tax:.2f}"
 
     # Signature
     sig = SubElement(filer, 'Signature')
-    SubElement(sig, 'SignerName').text    = data.get('signature', '')
-    SubElement(sig, 'PrintedName').text   = data.get('printed_name', '')
-    SubElement(sig, 'SignatureDate').text = data.get('signature_date', '')
+    SubElement(sig, 'SignerName').text    = str(data.get('signature', ''))
+    SubElement(sig, 'PrintedName').text   = str(data.get('printed_name', ''))
+    SubElement(sig, 'SignatureDate').text = str(data.get('signature_date', ''))
 
     # PaymentMethod
     pm = SubElement(filer, 'PaymentMethod')
     if data.get('payEFTPS'):
         SubElement(pm, 'Method').text         = 'EFTPS'
-        SubElement(pm, 'RoutingNumber').text  = data.get('eftps_routing', '')
-        SubElement(pm, 'AccountNumber').text  = data.get('eftps_account', '')
+        SubElement(pm, 'RoutingNumber').text  = str(data.get('eftps_routing', ''))
+        SubElement(pm, 'AccountNumber').text  = str(data.get('eftps_account', ''))
     elif data.get('payCard'):
         SubElement(pm, 'Method').text         = 'Card'
-        SubElement(pm, 'CardholderName').text = data.get('card_holder', '')
-        SubElement(pm, 'CardNumber').text     = data.get('card_number', '')
-        SubElement(pm, 'Expiration').text     = data.get('card_exp', '')
-        SubElement(pm, 'CVV').text            = data.get('card_cvv', '')
+        SubElement(pm, 'CardholderName').text = str(data.get('card_holder', ''))
+        SubElement(pm, 'CardNumber').text     = str(data.get('card_number', ''))
+        SubElement(pm, 'Expiration').text     = str(data.get('card_exp', ''))
+        SubElement(pm, 'CVV').text            = str(data.get('card_cvv', ''))
 
     # Pretty print
     rough = tostring(filer, 'utf-8')
