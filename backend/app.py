@@ -1,5 +1,5 @@
-from flask import Flask, request, jsonify, send_file
-from flask_cors import CORS
+from flask import Flask, request, jsonify, send_file, make_response
+from flask_cors import CORS, cross_origin
 import os
 import io
 from reportlab.pdfgen import canvas
@@ -13,21 +13,21 @@ from xml_builder import build_2290_xml
 app = Flask(__name__)
 
 # ----------------------
-# CORS: allow dev origins. Adjust for production.
-# Added explicit methods and headers to satisfy preflight POST
+# CORS: allow all origins and methods for production
+# Use both global CORS and after_request headers to ensure preflight headers are present
 CORS(
     app,
-    resources={r"/*": {"origins": [
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://10.0.0.166:3000",
-        "http://localhost:3001",
-        "http://10.0.0.166:3001",
-        # In production, add your real frontend domain, e.g.: https://your-production-frontend.com
-    ]}},
+    resources={r"/*": {"origins": "*"}},
     methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"],
 )
+
+@app.after_request
+def add_cors_headers(response):
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    return response
 # ----------------------
 
 # Helper: always resolve files relative to this script's directory
@@ -43,7 +43,8 @@ def index():
 def generate_xml():
     # Handle preflight OPTIONS
     if request.method == "OPTIONS":
-        return jsonify({}), 200
+        resp = make_response(jsonify({}), 200)
+        return resp
 
     data = request.get_json() or {}
     # Optional: basic validation
