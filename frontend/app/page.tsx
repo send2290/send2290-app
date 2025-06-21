@@ -120,7 +120,10 @@ export default function Form2290() {
 
   // Change handler
   const handleChange = (e: ChangeEvent<HTMLInputElement|HTMLSelectElement>) => {
-    const { name, value, type, checked } = e.target
+    // TS doesn’t know .checked exists on a select, so force it to an input under the hood
+    const target = e.target as HTMLInputElement
+    const { name, value, type } = target
+    const checked = target.checked
 
     // Vehicle fields
     if (name.startsWith('vehicle_')) {
@@ -134,7 +137,7 @@ export default function Form2290() {
         vv[field as any] = checked
         // mutual exclude
         if (field==='is_agricultural' && checked) vv.is_suspended=false
-        if (field==='is_suspended' && checked) vv.is_agricultural=false
+        if (field==='is_suspended'    && checked) vv.is_agricultural=false
         // auto W
         if (vv.is_agricultural||vv.is_suspended) vv.category='W'
         else if (vv.category==='W') vv.category=''
@@ -278,7 +281,7 @@ export default function Form2290() {
 
       {/* Vehicles */}
       <h2 style={{marginTop:20}}>Vehicles</h2>
-      {formData.vehicles.map((v,i)=>(
+      {formData.vehicles.map((v,i)=>(  
         <div key={i} style={{display:'flex',gap:'8px',alignItems:'center',marginBottom:12}}>
           <input style={{width:180}} type="text" name={`vehicle_${i}_vin`} value={v.vin}
                  onChange={handleChange} placeholder="VIN" pattern="[A-Za-z0-9]{17}" maxLength={17} title="17 chars"/>
