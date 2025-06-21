@@ -1,0 +1,86 @@
+# ==============================
+# FRONTEND: Next.js / Node.js
+# ==============================
+frontend/node_modules/
+frontend/.pnp
+frontend/.pnp.*
+frontend/.yarn/*
+!frontend/.yarn/patches
+!frontend/.yarn/plugins
+!frontend/.yarn/releases
+!frontend/.yarn/versions
+
+frontend/.next/
+frontend/out/
+frontend/build/
+
+# logs
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/pnpm-debug.log*
+
+# Vercel / Next.js environment
+frontend/.vercel/
+frontend/.env*
+frontend/.env.local
+frontend/.env.*.local
+frontend/next-env.d.ts
+frontend/*.tsbuildinfo
+
+# OS
+frontend/.DS_Store
+frontend/Thumbs.db
+
+# ==============================
+# BACKEND: Flask / Python
+# ==============================
+# Python venv
+backend/venv/
+# If your venv folder is named differently, adjust here.
+
+# Bytecode
+backend/__pycache__/
+backend/**/*.py[cod]
+backend/**/*.pyc
+
+# Flask-generated output (ignore generated PDFs/XMLs here)
+backend/output/
+
+# Logs
+backend/*.log
+
+# Env files (ignore secrets)
+backend/.env
+backend/.flaskenv
+
+# OS
+backend/.DS_Store
+backend/Thumbs.db
+
+# ==============================
+# Elastic Beanstalk CLI venv or others
+# ==============================
+ebcli-venv/
+# or any other CLI venv folder
+
+# ==============================
+# Editor / OS at root
+# ==============================
+.vscode/
+.DS_Store
+Thumbs.db
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# ==============================
+# Git / Deployment configs
+# ==============================
+# If you have .elasticbeanstalk/ at root for EB config, you may choose to commit config but ignore local state:
+.elasticbeanstalk/*
+!.elasticbeanstalk/*.cfg.yml
+!.elasticbeanstalk/*.global.yml
+
+# If you have Docker build files etc, ignore accordingly
+

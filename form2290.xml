@@ -1,0 +1,54 @@
+<?xml version="1.0" ?>
+<IRS2290Filer>
+  <ReturnHeader>
+    <BusinessName>eeeee</BusinessName>
+    <EIN>313213213</EIN>
+    <Address>18673 Audette St</Address>
+    <CityStateZip>Dearborn, Michigan, 48124</CityStateZip>
+    <TaxYear>2025</TaxYear>
+    <UsedOnDate>202507</UsedOnDate>
+    <AddressChange>true</AddressChange>
+    <AmendedReturn>true</AmendedReturn>
+    <VINCorrection>true</VINCorrection>
+    <FinalReturn>true</FinalReturn>
+  </ReturnHeader>
+  <Vehicles>
+    <Vehicle>
+      <VIN>11111111111111111</VIN>
+      <Category>V</Category>
+      <UsedMonth>202507</UsedMonth>
+      <IsLogging>false</IsLogging>
+      <IsSuspended>false</IsSuspended>
+      <IsAgricultural>false</IsAgricultural>
+      <TaxAmount>550.00</TaxAmount>
+    </Vehicle>
+    <Vehicle>
+      <VIN>22222222222222222</VIN>
+      <Category>A</Category>
+      <UsedMonth>202507</UsedMonth>
+      <IsLogging>true</IsLogging>
+      <IsSuspended>false</IsSuspended>
+      <IsAgricultural>false</IsAgricultural>
+      <TaxAmount>75.00</TaxAmount>
+    </Vehicle>
+    <Vehicle>
+      <VIN>33333333333333333</VIN>
+      <Category>W</Category>
+      <UsedMonth/>
+      <IsLogging>false</IsLogging>
+      <IsSuspended>true</IsSuspended>
+      <IsAgricultural>false</IsAgricultural>
+      <TaxAmount>0.00</TaxAmount>
+    </Vehicle>
+  </Vehicles>
+  <Signature>
+    <SignerName>signnnnnnn</SignerName>
+    <PrintedName>printed nammmm</PrintedName>
+    <SignatureDate>2025-06-20</SignatureDate>
+  </Signature>
+  <PaymentMethod>
+    <Method>EFTPS</Method>
+    <RoutingNumber>5555555555555</RoutingNumber>
+    <AccountNumber>555555555555</AccountNumber>
+  </PaymentMethod>
+</IRS2290Filer>
