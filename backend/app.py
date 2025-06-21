@@ -14,15 +14,20 @@ app = Flask(__name__)
 
 # ----------------------
 # CORS: allow dev origins. Adjust for production.
-CORS(app, origins=[
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://10.0.0.166:3000",   # your LAN IP if using that
-    "http://localhost:3001",
-    "http://10.0.0.166:3001",
-    # In production, add your real frontend domain, e.g.:
-    # "https://your-production-frontend.com"
-])
+# Added explicit methods and headers to satisfy preflight POST
+CORS(
+    app,
+    resources={r"/*": {"origins": [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://10.0.0.166:3000",
+        "http://localhost:3001",
+        "http://10.0.0.166:3001",
+        # In production, add your real frontend domain, e.g.: https://your-production-frontend.com
+    ]}},
+    methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
+)
 # ----------------------
 
 # Helper: always resolve files relative to this script's directory
@@ -34,13 +39,16 @@ def index():
         "message": "Send2290 API is up. Use POST /build-xml to generate XML, GET /download-xml or GET /download-pdf"
     }), 200
 
-@app.route("/build-xml", methods=["POST"])
+@app.route("/build-xml", methods=["POST", "OPTIONS"])
 def generate_xml():
+    # Handle preflight OPTIONS
+    if request.method == "OPTIONS":
+        return jsonify({}), 200
+
     data = request.get_json() or {}
     # Optional: basic validation
     if not data.get("business_name") or not data.get("ein"):
         return jsonify({"error": "Missing business_name or ein"}), 400
-    # More validation can be added here...
 
     try:
         xml_data = build_2290_xml(data)
@@ -82,7 +90,6 @@ def download_pdf():
     if not data:
         return jsonify({"error": "No form data submitted yet"}), 400
 
-    # Locate the PDF template
     template_path = os.path.join(SCRIPT_DIR, "f2290_template.pdf")
     if not os.path.exists(template_path):
         app.logger.error("Template not found at %s", template_path)
@@ -124,7 +131,6 @@ def download_pdf():
             if data.get("final_return"):
                 can.drawString(355, 634, "✔")
         else:
-            # Vehicle table overlay on subsequent pages
             vehicles = data.get("vehicles", [])
             if page_index == 1:
                 start_y = 498
