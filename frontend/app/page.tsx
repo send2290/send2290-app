@@ -200,7 +200,7 @@ export default function Form2290() {
       } else {
         vv[field] = value as any
       }
-      vehicles[idx] = vv
+      vehicles[idx] = vv as Vehicle
       setFormData({ ...formData, vehicles })
       return
     }
