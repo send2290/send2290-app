@@ -4,29 +4,39 @@ import { useState, useEffect, ChangeEvent } from 'react'
 
 export const weightCategories = [
   { label: 'A (55,000 lbs)',          value: 'A', tax: 100.00 },
-  { label: 'B (55,001 – 56,000 lbs)',  value: 'B', tax: 122.00 },
-  { label: 'C (56,001 – 57,000 lbs)',  value: 'C', tax: 144.00 },
-  { label: 'D (57,001 – 58,000 lbs)',  value: 'D', tax: 166.00 },
-  { label: 'E (58,001 – 59,000 lbs)',  value: 'E', tax: 188.00 },
-  { label: 'F (59,001 – 60,000 lbs)',  value: 'F', tax: 210.00 },
-  { label: 'G (60,001 – 61,000 lbs)',  value: 'G', tax: 232.00 },
-  { label: 'H (61,001 – 62,000 lbs)',  value: 'H', tax: 254.00 },
-  { label: 'I (62,001 – 63,000 lbs)',  value: 'I', tax: 276.00 },
-  { label: 'J (63,001 – 64,000 lbs)',  value: 'J', tax: 298.00 },
-  { label: 'K (64,001 – 65,000 lbs)',  value: 'K', tax: 320.00 },
-  { label: 'L (65,001 – 66,000 lbs)',  value: 'L', tax: 342.00 },
-  { label: 'M (66,001 – 67,000 lbs)',  value: 'M', tax: 364.00 },
-  { label: 'N (67,001 – 68,000 lbs)',  value: 'N', tax: 386.00 },
-  { label: 'O (68,001 – 69,000 lbs)',  value: 'O', tax: 408.00 },
-  { label: 'P (69,001 – 70,000 lbs)',  value: 'P', tax: 430.00 },
-  { label: 'Q (70,001 – 71,000 lbs)',  value: 'Q', tax: 452.00 },
-  { label: 'R (71,001 – 72,000 lbs)',  value: 'R', tax: 474.00 },
-  { label: 'S (72,001 – 73,000 lbs)',  value: 'S', tax: 496.00 },
-  { label: 'T (73,001 – 74,000 lbs)',  value: 'T', tax: 518.00 },
-  { label: 'U (74,001 – 75,000 lbs)',  value: 'U', tax: 540.00 },
+  { label: 'B (55,001 – 56,000 lbs)', value: 'B', tax: 122.00 },
+  { label: 'C (56,001 – 57,000 lbs)', value: 'C', tax: 144.00 },
+  { label: 'D (57,001 – 58,000 lbs)', value: 'D', tax: 166.00 },
+  { label: 'E (58,001 – 59,000 lbs)', value: 'E', tax: 188.00 },
+  { label: 'F (59,001 – 60,000 lbs)', value: 'F', tax: 210.00 },
+  { label: 'G (60,001 – 61,000 lbs)', value: 'G', tax: 232.00 },
+  { label: 'H (61,001 – 62,000 lbs)', value: 'H', tax: 254.00 },
+  { label: 'I (62,001 – 63,000 lbs)', value: 'I', tax: 276.00 },
+  { label: 'J (63,001 – 64,000 lbs)', value: 'J', tax: 298.00 },
+  { label: 'K (64,001 – 65,000 lbs)', value: 'K', tax: 320.00 },
+  { label: 'L (65,001 – 66,000 lbs)', value: 'L', tax: 342.00 },
+  { label: 'M (66,001 – 67,000 lbs)', value: 'M', tax: 364.00 },
+  { label: 'N (67,001 – 68,000 lbs)', value: 'N', tax: 386.00 },
+  { label: 'O (68,001 – 69,000 lbs)', value: 'O', tax: 408.00 },
+  { label: 'P (69,001 – 70,000 lbs)', value: 'P', tax: 430.00 },
+  { label: 'Q (70,001 – 71,000 lbs)', value: 'Q', tax: 452.00 },
+  { label: 'R (71,001 – 72,000 lbs)', value: 'R', tax: 474.00 },
+  { label: 'S (72,001 – 73,000 lbs)', value: 'S', tax: 496.00 },
+  { label: 'T (73,001 – 74,000 lbs)', value: 'T', tax: 518.00 },
+  { label: 'U (74,001 – 75,000 lbs)', value: 'U', tax: 540.00 },
   { label: 'V (over 75,000 lbs)',     value: 'V', tax: 550.00 },
-  { label: 'W (Suspended)',           value: 'W', tax: 0.00 }
+  { label: 'W (Suspended)',           value: 'W', tax:   0.00 },
 ]
+
+type Vehicle = {
+  vin: string
+  category: string
+  used_month: string
+  is_logging: boolean
+  is_suspended: boolean
+  is_agricultural: boolean
+  mileage_5000_or_less: boolean
+}
 
 export default function Form2290() {
   // Determine API base URL
@@ -38,6 +48,7 @@ export default function Form2290() {
 
   // Form state
   const [formData, setFormData] = useState({
+    // Filer / ReturnHeader
     business_name:   '',
     ein:             '',
     address:         '',
@@ -50,6 +61,25 @@ export default function Form2290() {
     amended_return:  false,
     vin_correction:  false,
     final_return:    false,
+
+    // Include Paid Preparer?
+    include_preparer: false,
+    preparer_name:           '',
+    preparer_ptin:           '',
+    date_prepared:           '',
+    preparer_firm_name:      '',
+    preparer_firm_ein:       '',
+    preparer_firm_address:   '',
+    preparer_firm_citystatezip: '',
+    preparer_firm_phone:     '',
+
+    // Third-Party Designee / Consent
+    consent_to_disclose: false,
+    designee_name:       '',
+    designee_phone:      '',
+    designee_pin:        '',
+
+    // Vehicles (Schedule 1)
     vehicles: [
       {
         vin: '',
@@ -57,12 +87,17 @@ export default function Form2290() {
         used_month: '',
         is_logging: false,
         is_suspended: false,
-        is_agricultural: false
-      }
-    ],
-    signature:     '',
-    printed_name:  '',
-    signature_date:'',
+        is_agricultural: false,
+        mileage_5000_or_less: false,
+      },
+    ] as Vehicle[],
+
+    // Signature
+    signature:      '',
+    printed_name:   '',
+    signature_date: '',
+
+    // Payment
     payEFTPS:      false,
     payCard:       false,
     eftps_routing: '',
@@ -70,17 +105,18 @@ export default function Form2290() {
     card_holder:   '',
     card_number:   '',
     card_exp:      '',
-    card_cvv:      ''
+    card_cvv:      '',
   })
+
   const [totalTax, setTotalTax] = useState(0)
   const todayStr = new Date().toISOString().split('T')[0]
 
-  // Month options July→June (hardcoded year 2025 here; adjust if dynamic needed)
+  // Month options July→June
   const months = Array.from({ length: 12 }).map((_, i) => {
     const m = 6 + i
     return {
       label: new Date(2025, m, 1).toLocaleString('default', { month: 'long', year: 'numeric' }),
-      value: `2025${String(m+1).padStart(2,'0')}`
+      value: `2025${String(m + 1).padStart(2, '0')}`,
     }
   })
 
@@ -89,83 +125,83 @@ export default function Form2290() {
     A:75, B:91.5, C:108, D:124.5, E:141, F:157.5,
     G:174, H:190.5, I:207, J:223.5, K:240, L:256.5,
     M:273, N:289.5, O:306, P:322.5, Q:339, R:355.5,
-    S:372, T:388.5, U:405, V:412.5, W:0
+    S:372, T:388.5, U:405, V:412.5, W:0,
   }
 
-  // Recalculate total tax when vehicles change
   useEffect(() => {
     let total = 0
     formData.vehicles.forEach(v => {
-      // Parse last two digits of used_month as month number
-      let mon = 0
-      if (typeof v.used_month === 'string' && v.used_month.length >= 2) {
-        const last2 = v.used_month.slice(-2)
-        const mi = parseInt(last2, 10)
-        if (!isNaN(mi)) mon = mi
-      }
+      const mon = parseInt(v.used_month.slice(-2), 10) || 0
+      if (!mon || v.is_suspended || v.is_agricultural) return
       const catObj = weightCategories.find(w => w.value === v.category)
-      if (!catObj || !mon) return
-      if (v.is_suspended || v.is_agricultural) return
-
+      if (!catObj) return
       const rate = v.is_logging ? loggingRates[v.category] : catObj.tax
-      let tax = 0
-      if (mon === 7) {
-        tax = rate
-      } else {
-        let left = 13 - mon
-        if (left <= 0) left += 12
-        tax = Number(((rate * left) / 12).toFixed(2))
-      }
-      total += tax
+      const monthsLeft = mon >= 7 ? 12 : 13 - mon
+      total += Number(((rate * monthsLeft) / 12).toFixed(2))
     })
     setTotalTax(total)
   }, [formData.vehicles])
 
-  // Unified change handler
   const handleChange = (e: ChangeEvent<HTMLInputElement|HTMLSelectElement>) => {
-    const target = e.target as HTMLInputElement
-    const { name, value, type } = target
-    const checked = target.checked
+    const t = e.target as HTMLInputElement
+    const { name, type, value, checked } = t
 
-    // Vehicle fields: name like "vehicle_0_vin", "vehicle_1_category", etc.
-    if (name.startsWith('vehicle_')) {
-      const [_, idxStr, ...rest] = name.split('_')
-      const idx = parseInt(idxStr, 10)
-      const field = rest.join('_')
-      const vehicles = [...formData.vehicles]
-      const vv = { ...vehicles[idx] }
-
-      if (type === 'checkbox') {
-        vv[field as any] = checked
-        // mutual exclude
-        if (field === 'is_agricultural' && checked) vv.is_suspended = false
-        if (field === 'is_suspended' && checked) vv.is_agricultural = false
-        // auto category 'W' if suspended/agri
-        if (vv.is_agricultural || vv.is_suspended) {
-          vv.category = 'W'
-        } else if (vv.category === 'W') {
-          vv.category = ''
-        }
+    // Include Paid Preparer toggle
+    if (name === 'include_preparer') {
+      if (!checked) {
+        setFormData({
+          ...formData,
+          include_preparer: false,
+          preparer_name: '',
+          preparer_ptin: '',
+          date_prepared: '',
+          preparer_firm_name: '',
+          preparer_firm_ein: '',
+          preparer_firm_address: '',
+          preparer_firm_citystatezip: '',
+          preparer_firm_phone: '',
+        })
       } else {
-        vv[field as any] = value
-        if (field === 'category') {
-          if (value === 'W' && !(vv.is_agricultural || vv.is_suspended)) {
-            alert('Select Agricultural or Non-Agricultural box for Suspended category.')
-          }
-          if (value !== 'W') {
-            vv.is_agricultural = false
-            vv.is_suspended = false
-          }
-        }
+        setFormData({ ...formData, include_preparer: true })
       }
-      vehicles[idx] = vv
-      setFormData({ ...formData, vehicles })
       return
     }
 
-    // Signature date cannot be before today
-    if (name === 'signature_date' && value < todayStr) {
-      alert('Date cannot be earlier than today.')
+    // Consent to Disclose toggle
+    if (name === 'consent_to_disclose') {
+      if (!checked) {
+        setFormData({
+          ...formData,
+          consent_to_disclose: false,
+          designee_name: '',
+          designee_phone: '',
+          designee_pin: '',
+        })
+      } else {
+        setFormData({ ...formData, consent_to_disclose: true })
+      }
+      return
+    }
+
+    // Vehicle fields
+    if (name.startsWith('vehicle_')) {
+      const [_, idxStr, ...fld] = name.split('_')
+      const idx = parseInt(idxStr, 10)
+      const field = fld.join('_') as keyof Vehicle
+      const vehicles = [...formData.vehicles]
+      const vv = { ...vehicles[idx] }
+      if (type === 'checkbox') {
+        vv[field] = checked as any
+        if (field === 'is_agricultural' && checked) vv.is_suspended = false
+        if (field === 'is_suspended' && checked) vv.is_agricultural = false
+        vv.is_agricultural || vv.is_suspended
+          ? (vv.category = 'W')
+          : vv.category === 'W' && (vv.category = '')
+      } else {
+        vv[field] = value as any
+      }
+      vehicles[idx] = vv
+      setFormData({ ...formData, vehicles })
       return
     }
 
@@ -179,14 +215,19 @@ export default function Form2290() {
       return
     }
 
-    // Other fields
+    // Signature date guard
+    if (name === 'signature_date' && value < todayStr) {
+      alert('Signature date cannot be before today.')
+      return
+    }
+
+    // Default update
     setFormData({
       ...formData,
-      [name]: type === 'checkbox' ? checked : value
+      [name]: type === 'checkbox' ? checked : value,
     })
   }
 
-  // Add/remove vehicles
   const addVehicle = () => {
     setFormData({
       ...formData,
@@ -198,159 +239,171 @@ export default function Form2290() {
           used_month: '',
           is_logging: false,
           is_suspended: false,
-          is_agricultural: false
-        }
-      ]
+          is_agricultural: false,
+          mileage_5000_or_less: false,
+        },
+      ],
     })
   }
+
   const removeVehicle = (i: number) => {
-    const newVehs = formData.vehicles.filter((_, j) => j !== i)
-    setFormData({ ...formData, vehicles: newVehs })
+    setFormData({
+      ...formData,
+      vehicles: formData.vehicles.filter((_, j) => j !== i),
+    })
   }
 
-  // Counts
-  const totalVINs = formData.vehicles.length
-  const lodgingCount = formData.vehicles.filter(v => v.is_logging).length
+  const totalVINs      = formData.vehicles.length
+  const lodgingCount   = formData.vehicles.filter(v => v.is_logging).length
   const suspendedCount = formData.vehicles.filter(v => v.is_suspended || v.is_agricultural).length
 
-  // Front-end validation helper before submitting
   const validateBeforeSubmit = (): string | null => {
-    if (!formData.business_name.trim()) {
-      return 'Business Name is required'
+    if (!formData.business_name.trim()) return 'Business Name is required'
+    if (!/^\d{9}$/.test(formData.ein))     return 'EIN must be 9 digits'
+
+    if (formData.include_preparer) {
+      if (!formData.preparer_name.trim())      return 'Preparer Name is required'
+      if (!formData.preparer_ptin.trim())      return 'Preparer PTIN is required'
+      if (!formData.date_prepared)             return 'Date Prepared is required'
+      if (!formData.preparer_firm_name.trim()) return 'Firm Name is required'
+      if (!/^\d{9}$/.test(formData.preparer_firm_ein)) return 'Firm EIN must be 9 digits'
+      if (!formData.preparer_firm_address.trim())      return 'Firm Address is required'
+      if (!formData.preparer_firm_citystatezip.trim()) return 'Firm City/State/ZIP is required'
+      if (!/^\d{10}$/.test(formData.preparer_firm_phone)) return 'Firm Phone must be 10 digits'
     }
-    if (!/^\d{9}$/.test(formData.ein.trim())) {
-      return 'EIN must be 9 digits'
+
+    if (formData.consent_to_disclose) {
+      if (!formData.designee_name.trim())       return 'Designee Name is required'
+      if (!/^\d{10}$/.test(formData.designee_phone)) return 'Designee Phone must be 10 digits'
+      if (!formData.designee_pin.trim())        return 'Designee PIN is required'
     }
-    if (!formData.address.trim() || !formData.city.trim() || !formData.state.trim() || !formData.zip.trim()) {
-      return 'Address, City, State, ZIP are required'
+
+    if (!formData.signature.trim())    return 'Signature is required'
+    if (!formData.printed_name.trim()) return 'Printed Name is required'
+    if (!formData.signature_date)      return 'Signature Date is required'
+
+    if (!formData.payEFTPS && !formData.payCard) {
+      return 'Select either EFTPS or Credit/Debit Card'
     }
-    if (!/^\d{5}$/.test(formData.zip.trim())) {
-      return 'ZIP must be 5 digits'
-    }
-    // Vehicles
-    if (formData.vehicles.length === 0) {
-      return 'At least one vehicle is required'
-    }
-    for (let i = 0; i < formData.vehicles.length; i++) {
-      const v = formData.vehicles[i]
-      if (!v.vin.trim()) {
-        return `Vehicle #${i+1}: VIN is required`
-      }
-      if (v.vin.trim().length !== 17) {
-        return `Vehicle #${i+1}: VIN must be 17 characters`
-      }
-      if (!v.used_month) {
-        return `Vehicle #${i+1}: Month/Year is required`
-      }
-      if (!v.category) {
-        return `Vehicle #${i+1}: Weight Class is required`
-      }
-      if (v.category === 'W' && !(v.is_agricultural || v.is_suspended)) {
-        return `Vehicle #${i+1}: For Suspended (W), check one of the boxes`
-      }
-    }
-    // Signature
-    if (!formData.signature.trim()) {
-      return 'Signature is required'
-    }
-    if (!formData.printed_name.trim()) {
-      return 'Printed Name is required'
-    }
-    if (!formData.signature_date) {
-      return 'Signature Date is required'
-    }
-    // Payment: if EFTPS selected, fields required
     if (formData.payEFTPS) {
       if (!formData.eftps_routing.trim() || !formData.eftps_account.trim()) {
         return 'EFTPS routing and account are required'
       }
     }
     if (formData.payCard) {
-      if (!formData.card_holder.trim() || !formData.card_number.trim() || !formData.card_exp.trim() || !formData.card_cvv.trim()) {
-        return 'Credit card fields are required'
+      if (!formData.card_holder.trim() ||
+          !formData.card_number.trim() ||
+          !formData.card_exp.trim() ||
+          !formData.card_cvv.trim()) {
+        return 'All credit/debit card fields are required'
       }
     }
-    // All good
+
     return null
   }
 
-  // Submit XML
   const handleSubmit = async () => {
-    // Log API_BASE and payload for debugging
-    console.log("API_BASE is:", API_BASE)
-    console.log("About to POST to:", `${API_BASE}/build-xml`)
-    console.log("Payload:", formData)
-
-    // Front-end validation
-    const validationError = validateBeforeSubmit()
-    if (validationError) {
-      alert(validationError)
+    // 0️⃣ Front-end validation
+    const err = validateBeforeSubmit()
+    if (err) {
+      alert(err)
       return
     }
 
-    try {
-      const res = await fetch(`${API_BASE}/build-xml`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
-      })
-      let json: any = {}
-      try {
-        json = await res.json()
-      } catch (_) {
-        console.error("Failed to parse JSON response")
-      }
-      if (!res.ok) {
-        console.error("build-xml error response:", json)
-        alert(json.error || `Submission failed (status ${res.status})`)
-        return
-      }
-      console.log("build-xml success response:", json)
-      alert(json.message || "XML generated")
+    // 1️⃣ Group your vehicles by used_month
+    const groups = formData.vehicles.reduce<Record<string, Vehicle[]>>((acc, v) => {
+      if (!v.used_month) return acc
+      if (!acc[v.used_month]) acc[v.used_month] = []
+      acc[v.used_month].push(v)
+      return acc
+    }, {})
 
-      // download XML
-      console.log("Downloading XML from:", `${API_BASE}/download-xml`)
-      const xmlRes = await fetch(`${API_BASE}/download-xml`)
-      if (!xmlRes.ok) {
-        console.error("download-xml failed, status:", xmlRes.status)
-        throw new Error('XML download failed')
+    const months = Object.keys(groups)
+    if (months.length === 0) {
+      alert("Please select a month of first use for at least one vehicle.")
+      return
+    }
+
+    // 2️⃣ For each month‐group, overwrite used_on_july & vehicles, then POST
+    for (const month of months) {
+      const payload = {
+        ...formData,
+        used_on_july: month,
+        vehicles:     groups[month],
       }
-      const blob = await xmlRes.blob()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url; a.download = 'form2290.xml'; a.click()
-      URL.revokeObjectURL(url)
-    } catch (err: any) {
-      console.error("Fetch threw error in handleSubmit:", err)
-      alert(err.message || 'Failed to fetch')
+
+      try {
+        // POST to build it
+        const buildRes = await fetch(`${API_BASE}/build-xml`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify(payload),
+        })
+        if (!buildRes.ok) {
+          const errJson = await buildRes.json().catch(() => ({}))
+          alert(`Error building XML for ${month}: ${errJson.error || buildRes.status}`)
+          continue
+        }
+
+        // Parse JSON and extract xml string
+        const { xml: xmlString } = await buildRes.json()
+
+        // Turn that string into a proper XML blob
+        const xmlBlob = new Blob([xmlString], { type: 'application/xml' })
+
+        // Download it
+        const url = URL.createObjectURL(xmlBlob)
+        const a   = document.createElement('a')
+        a.href     = url
+        a.download = `form2290_${month}.xml`
+        a.click()
+        URL.revokeObjectURL(url)
+
+      } catch (e: any) {
+        alert(`Network error for ${month}: ${e.message}`)
+      }
     }
   }
 
-  // Download PDF
   const handleDownloadPDF = async () => {
-    console.log("Downloading PDF from:", `${API_BASE}/download-pdf`)
     try {
       const pdfRes = await fetch(`${API_BASE}/download-pdf`)
-      if (!pdfRes.ok) {
-        console.error("download-pdf failed, status:", pdfRes.status)
-        throw new Error('PDF download failed')
-      }
-      const blob = await pdfRes.blob()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url; a.download = 'form2290.pdf'; a.click()
+      const blob   = await pdfRes.blob()
+      const url    = URL.createObjectURL(blob)
+      const a      = document.createElement('a')
+      a.href       = url
+      a.download   = 'form2290.pdf'
+      a.click()
       URL.revokeObjectURL(url)
-    } catch (err) {
-      console.error("Error in handleDownloadPDF:", err)
+    } catch {
       alert('PDF download failed')
     }
   }
 
   // Styles
-  const container: React.CSSProperties = { maxWidth: 900, margin: '0 auto', padding: 20, fontFamily: 'Segoe UI, sans-serif' }
-  const header: React.CSSProperties = { textAlign: 'center', color: '#d32f2f' }
-  const labelSmall: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.9rem' }
-  const btnSmall: React.CSSProperties = { padding: '6px 12px', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: '0.9rem' }
+  const container: React.CSSProperties  = {
+    maxWidth: 900,
+    margin: '0 auto',
+    padding: 20,
+    fontFamily: 'Segoe UI, sans-serif'
+  }
+  const header: React.CSSProperties     = {
+    textAlign: 'center',
+    color: '#d32f2f'
+  }
+  const labelSmall: React.CSSProperties = {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 4,
+    fontSize: '0.9rem'
+  }
+  const btnSmall: React.CSSProperties   = {
+    padding: '6px 12px',
+    border: 'none',
+    borderRadius: 4,
+    cursor: 'pointer',
+    fontSize: '0.9rem'
+  }
 
   return (
     <div style={container}>
@@ -359,142 +412,159 @@ export default function Form2290() {
 
       {/* Business Info */}
       <h2>Business Info</h2>
-      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-        <input
-          name="business_name"
-          value={formData.business_name}
-          onChange={handleChange}
-          placeholder="Name"
-        />
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <input name="business_name" placeholder="Name" value={formData.business_name} onChange={handleChange} />
         <input
           name="ein"
-          value={formData.ein}
-          onChange={handleChange}
           placeholder="EIN"
           pattern="\d{9}"
           maxLength={9}
           inputMode="numeric"
           title="9 digits"
-        />
-        <input
-          name="address"
-          value={formData.address}
+          value={formData.ein}
           onChange={handleChange}
-          placeholder="Address"
         />
-        <input
-          name="city"
-          value={formData.city}
-          onChange={handleChange}
-          placeholder="City"
-        />
-        <input
-          name="state"
-          value={formData.state}
-          onChange={handleChange}
-          placeholder="State"
-        />
+        <input name="address" placeholder="Address" value={formData.address} onChange={handleChange} />
+        <input name="city" placeholder="City" value={formData.city} onChange={handleChange} />
+        <input name="state" placeholder="State" value={formData.state} onChange={handleChange} />
         <input
           name="zip"
-          value={formData.zip}
-          onChange={handleChange}
           placeholder="ZIP"
           pattern="\d{5}"
           maxLength={5}
           inputMode="numeric"
           title="5 digits"
+          value={formData.zip}
+          onChange={handleChange}
         />
       </div>
 
       {/* Return Flags */}
-      <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', marginTop: 12 }}>
-        <label>
-          <input
-            type="checkbox"
-            name="address_change"
-            checked={formData.address_change}
-            onChange={handleChange}
-          />{' '}
-          Address Change
-        </label>
-        <label>
-          <input
-            type="checkbox"
-            name="amended_return"
-            checked={formData.amended_return}
-            onChange={handleChange}
-          />{' '}
-          Amended Return
-        </label>
-        <label>
-          <input
-            type="checkbox"
-            name="vin_correction"
-            checked={formData.vin_correction}
-            onChange={handleChange}
-          />{' '}
-          VIN Correction
-        </label>
-        <label>
-          <input
-            type="checkbox"
-            name="final_return"
-            checked={formData.final_return}
-            onChange={handleChange}
-          />{' '}
-          Final Return
-        </label>
+      <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', marginTop: 12 }}>
+        {['address_change','amended_return','vin_correction','final_return'].map(flag => (
+          <label key={flag} style={labelSmall}>
+            <input type="checkbox" name={flag} checked={(formData as any)[flag]} onChange={handleChange} />
+            {flag.replace(/_/g,' ')}
+          </label>
+        ))}
       </div>
+
+      {/* Paid Preparer */}
+      <h2 style={{ marginTop: 20 }}>
+        <label style={labelSmall}>
+          <input
+            type="checkbox"
+            name="include_preparer"
+            checked={formData.include_preparer}
+            onChange={handleChange}
+          />
+          Include Paid Preparer
+        </label>
+      </h2>
+      {formData.include_preparer && (
+        <>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <input name="preparer_name" placeholder="Preparer Name" value={formData.preparer_name} onChange={handleChange} required />
+            <input name="preparer_ptin" placeholder="PTIN" value={formData.preparer_ptin} onChange={handleChange} required />
+            <input type="date" name="date_prepared" max={todayStr} value={formData.date_prepared} onChange={handleChange} required />
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+            <input name="preparer_firm_name" placeholder="Firm Name" value={formData.preparer_firm_name} onChange={handleChange} required />
+            <input
+              name="preparer_firm_ein"
+              placeholder="Firm EIN"
+              pattern="\d{9}"
+              maxLength={9}
+              inputMode="numeric"
+              title="9 digits"
+              value={formData.preparer_firm_ein}
+              onChange={handleChange}
+              required
+            />
+            <input name="preparer_firm_address" placeholder="Firm Address" value={formData.preparer_firm_address} onChange={handleChange} required />
+            <input
+              name="preparer_firm_citystatezip"
+              placeholder="Firm City/State/ZIP"
+              value={formData.preparer_firm_citystatezip}
+              onChange={handleChange}
+              required
+            />
+            <input
+              type="tel"
+              name="preparer_firm_phone"
+              placeholder="Firm Phone (10 digits)"
+              pattern="\d{10}"
+              maxLength={10}
+              inputMode="numeric"
+              title="10 digits"
+              value={formData.preparer_firm_phone}
+              onChange={handleChange}
+              required
+            />
+          </div>
+        </>
+      )}
+
+      {/* Third-Party Designee / Consent */}
+      <h2 style={{ marginTop: 20 }}>
+        <label style={labelSmall}>
+          <input type="checkbox" name="consent_to_disclose" checked={formData.consent_to_disclose} onChange={handleChange} />
+          Consent to Disclose
+        </label>
+      </h2>
+      {formData.consent_to_disclose && (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <input name="designee_name" placeholder="Designee Name" value={formData.designee_name} onChange={handleChange} required />
+          <input
+            name="designee_phone"
+            placeholder="Designee Phone (10 digits)"
+            pattern="\d{10}"
+            maxLength={10}
+            inputMode="numeric"
+            title="10 digits"
+            value={formData.designee_phone}
+            onChange={handleChange}
+            required
+          />
+          <input name="designee_pin" placeholder="Designee PIN" value={formData.designee_pin} onChange={handleChange} required />
+        </div>
+      )}
 
       {/* Vehicles */}
       <h2 style={{ marginTop: 20 }}>Vehicles</h2>
       {formData.vehicles.map((v, i) => (
-        <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: 12 }}>
+        <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
           <input
             style={{ width: 180 }}
             type="text"
             name={`vehicle_${i}_vin`}
-            value={v.vin}
-            onChange={handleChange}
             placeholder="VIN"
             pattern="[A-Za-z0-9]{17}"
             maxLength={17}
             title="17 chars"
-          />
-          <select
-            name={`vehicle_${i}_used_month`}
-            value={v.used_month}
+            value={v.vin}
             onChange={handleChange}
-          >
+          />
+          <select name={`vehicle_${i}_used_month`} value={v.used_month} onChange={handleChange}>
             <option value="">Select Month/Year</option>
             {months.map(m => (
-              <option key={m.value} value={m.value}>
-                {m.label}
-              </option>
+              <option key={m.value} value={m.value}>{m.label}</option>
             ))}
           </select>
-          <select
-            name={`vehicle_${i}_category`}
-            value={v.category}
-            onChange={handleChange}
-          >
+          <select name={`vehicle_${i}_category`} value={v.category} onChange={handleChange}>
             <option value="">Weight Class</option>
             {weightCategories.map(w => (
-              <option key={w.value} value={w.value}>
-                {w.label}
-              </option>
+              <option key={w.value} value={w.value}>{w.label}</option>
             ))}
           </select>
           <label style={labelSmall}>
             Logging? <input type="checkbox" name={`vehicle_${i}_is_logging`} checked={v.is_logging} onChange={handleChange} />
           </label>
           <label style={labelSmall}>
-            Agricultural Vehicle ≤7,000 mi?{' '}
-            <input type="checkbox" name={`vehicle_${i}_is_agricultural`} checked={v.is_agricultural} onChange={handleChange} />
+            Agricultural ≤7,000 mi <input type="checkbox" name={`vehicle_${i}_is_agricultural`} checked={v.is_agricultural} onChange={handleChange} />
           </label>
           <label style={labelSmall}>
-            Non-Agricultural ≤5,000 mi{' '}
-            <input type="checkbox" name={`vehicle_${i}_is_suspended`} checked={v.is_suspended} onChange={handleChange} />
+            Non-Agricultural ≤5,000 mi <input type="checkbox" name={`vehicle_${i}_is_suspended`} checked={v.is_suspended} onChange={handleChange} />
           </label>
           <button
             type="button"
@@ -505,9 +575,7 @@ export default function Form2290() {
           </button>
         </div>
       ))}
-
-      {/* Add Vehicle & Counts */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
         <button
           type="button"
           style={{ ...btnSmall, backgroundColor: '#1565c0', color: '#fff' }}
@@ -517,8 +585,8 @@ export default function Form2290() {
         </button>
         <div>
           <strong>VINs:</strong> {totalVINs}
-          <strong style={{ marginLeft: 12 }}>Lodging Vehicles:</strong> {lodgingCount}
-          <strong style={{ marginLeft: 12 }}>Suspended Vehicles:</strong> {suspendedCount}
+          <strong style={{ marginLeft: 12 }}>Logging:</strong> {lodgingCount}
+          <strong style={{ marginLeft: 12 }}>Suspended:</strong> {suspendedCount}
         </div>
       </div>
 
@@ -526,31 +594,15 @@ export default function Form2290() {
 
       {/* Signature */}
       <h2>Signature</h2>
-      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-        <input
-          name="signature"
-          value={formData.signature}
-          onChange={handleChange}
-          placeholder="Signature"
-        />
-        <input
-          name="printed_name"
-          value={formData.printed_name}
-          onChange={handleChange}
-          placeholder="Printed Name"
-        />
-        <input
-          type="date"
-          name="signature_date"
-          min={todayStr}
-          value={formData.signature_date}
-          onChange={handleChange}
-        />
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <input name="signature" placeholder="Signature" value={formData.signature} onChange={handleChange} />
+        <input name="printed_name" placeholder="Printed Name" value={formData.printed_name} onChange={handleChange} />
+        <input type="date" name="signature_date" min={todayStr} value={formData.signature_date} onChange={handleChange} />
       </div>
 
       {/* Payment Method */}
       <h2 style={{ marginTop: 20 }}>Payment Method</h2>
-      <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', marginTop: 8 }}>
+      <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', marginTop: 8 }}>
         <label>
           <input type="checkbox" name="payEFTPS" checked={formData.payEFTPS} onChange={handleChange} /> EFTPS
         </label>
@@ -559,52 +611,22 @@ export default function Form2290() {
         </label>
       </div>
       {formData.payEFTPS && (
-        <div style={{ marginTop: 12, display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          <input
-            name="eftps_routing"
-            value={formData.eftps_routing}
-            onChange={handleChange}
-            placeholder="Routing Number"
-          />
-          <input
-            name="eftps_account"
-            value={formData.eftps_account}
-            onChange={handleChange}
-            placeholder="Account Number"
-          />
+        <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <input name="eftps_routing" placeholder="Routing Number" value={formData.eftps_routing} onChange={handleChange} />
+          <input name="eftps_account" placeholder="Account Number" value={formData.eftps_account} onChange={handleChange} />
         </div>
       )}
       {formData.payCard && (
-        <div style={{ marginTop: 12, display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          <input
-            name="card_holder"
-            value={formData.card_holder}
-            onChange={handleChange}
-            placeholder="Cardholder Name"
-          />
-          <input
-            name="card_number"
-            value={formData.card_number}
-            onChange={handleChange}
-            placeholder="Card Number"
-          />
-          <input
-            name="card_exp"
-            value={formData.card_exp}
-            onChange={handleChange}
-            placeholder="MM/YY"
-          />
-          <input
-            name="card_cvv"
-            value={formData.card_cvv}
-            onChange={handleChange}
-            placeholder="CVV"
-          />
+        <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <input name="card_holder" placeholder="Cardholder Name" value={formData.card_holder} onChange={handleChange} />
+          <input name="card_number" placeholder="Card Number" value={formData.card_number} onChange={handleChange} />
+          <input name="card_exp" placeholder="MM/YY" value={formData.card_exp} onChange={handleChange} />
+          <input name="card_cvv" placeholder="CVV" value={formData.card_cvv} onChange={handleChange} />
         </div>
       )}
 
       {/* Actions */}
-      <div style={{ marginTop: 20, display: 'flex', gap: '12px' }}>
+      <div style={{ marginTop: 20, display: 'flex', gap: 12 }}>
         <button
           type="button"
           style={{ ...btnSmall, backgroundColor: '#002855', color: '#fff' }}

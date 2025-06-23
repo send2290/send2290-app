@@ -1,201 +1,127 @@
-from xml.etree.ElementTree import Element, SubElement, tostring
-from xml.dom.minidom import parseString
-import re
+import xml.etree.ElementTree as ET
+from xml.dom import minidom
 
-def build_2290_xml(data):
+# Static tax tables (Table I and Logging Table II)
+WEIGHT_RATES = {
+    "A": 100.00, "B": 122.00, "C": 144.00, "D": 166.00, "E": 188.00, "F": 210.00,
+    "G": 232.00, "H": 254.00, "I": 276.00, "J": 298.00, "K": 320.00, "L": 342.00,
+    "M": 364.00, "N": 386.00, "O": 408.00, "P": 430.00, "Q": 452.00, "R": 474.00,
+    "S": 496.00, "T": 518.00, "U": 540.00, "V": 550.00, "W":   0.00
+}
+LOGGING_RATES = {
+    "A":  75.0,  "B":  91.5,  "C": 108.0, "D": 124.5, "E": 141.0, "F": 157.5,
+    "G": 174.0, "H": 190.5, "I": 207.0, "J": 223.5, "K": 240.0, "L": 256.5,
+    "M": 273.0, "N": 289.5, "O": 306.0, "P": 322.5, "Q": 339.0, "R": 355.5,
+    "S": 372.0, "T": 388.5, "U": 405.0, "V": 412.5, "W":   0.0
+}
+
+def build_2290_xml(data: dict) -> str:
     """
-    Build the IRS Form 2290 XML from the provided data dict,
-    including vehicles, signature, and payment sections.
-    Raises ValueError for validation issues.
+    Build an IRS-compliant Form 2290 XML using the IRS XSL schemas.
     """
-    # Helper to extract month integer from used_month field.
-    def parse_used_month(used_month):
-        """
-        Accepts:
-          - A string "YYYYMM" (e.g., "202507") -> returns 7
-          - A string "MM" or "M" (e.g., "07" or "7") -> returns int
-          - An int 1-12 -> returns as is
-        Raises ValueError if cannot parse or out of range.
-        """
-        if used_month is None:
-            raise ValueError("UsedMonth is missing")
-        # If int already
-        if isinstance(used_month, int):
-            mon = used_month
-        else:
-            # It's a string: strip whitespace
-            s = str(used_month).strip()
-            # If matches YYYYMM
-            if re.fullmatch(r"\d{6}", s):
-                # last two digits
-                mon = int(s[-2:])
-            elif re.fullmatch(r"\d{1,2}", s):
-                mon = int(s)
-            else:
-                raise ValueError(f"UsedMonth '{used_month}' is not in expected format")
-        if not (1 <= mon <= 12):
-            raise ValueError(f"UsedMonth '{used_month}' parsed to {mon}, which is out of 1-12 range")
-        return mon
+    root = ET.Element("IRS2290")
 
-    # Full‐year tax rates (column a)
-    full_rates = {
-        'A': 100.00, 'B': 122.00, 'C': 144.00, 'D': 166.00, 'E': 188.00,
-        'F': 210.00, 'G': 232.00, 'H': 254.00, 'I': 276.00, 'J': 298.00,
-        'K': 320.00, 'L': 342.00, 'M': 364.00, 'N': 386.00, 'O': 408.00,
-        'P': 430.00, 'Q': 452.00, 'R': 474.00, 'S': 496.00, 'T': 518.00,
-        'U': 540.00, 'V': 550.00, 'W': 0.00
-    }
+    # ── Filer (dynamic EIN to match ReturnHeader) ─────────
+    filer = ET.SubElement(root, "Filer")
+    ET.SubElement(filer, "DaytimePhoneNum").text = "3138506579"
+    # Ensure EIN matches both places
+    filer_ein = data.get("ein", "").replace("-", "").zfill(9)
+    ET.SubElement(filer, "EIN").text = filer_ein
+    ET.SubElement(filer, "AddressLine1Txt").text = "18673 Audette St"
+    ET.SubElement(filer, "CityStateInfo").text   = "Dearborn, Michigan 48124"
 
-    # Logging vehicle rates (column b)
-    logging_rates = {
-        'A': 75.00,  'B': 91.50,  'C': 108.00, 'D': 124.50, 'E': 141.00,
-        'F': 157.50, 'G': 174.00, 'H': 190.50, 'I': 207.00, 'J': 223.50,
-        'K': 240.00, 'L': 256.50, 'M': 273.00, 'N': 289.50, 'O': 306.00,
-        'P': 322.50, 'Q': 339.00, 'R': 355.50, 'S': 372.00, 'T': 388.50,
-        'U': 405.00, 'V': 412.50, 'W': 0.00
-    }
+    # ── ReturnHeader ───────────────────────────────────────
+    hdr = ET.SubElement(filer, "ReturnHeader")
+    ET.SubElement(hdr, "BusinessNameLine1Txt").text = data.get("business_name", "").strip()
+    ET.SubElement(hdr, "BusinessNameLine2Txt").text = ""
+    # Duplicate EIN here
+    ET.SubElement(hdr, "EIN").text = filer_ein
+    ET.SubElement(hdr, "Address").text = data.get("address", "").strip()
+    city = data.get("city", "").strip()
+    state = data.get("state", "").strip()
+    zipc = data.get("zip", "").strip()
+    ET.SubElement(hdr, "CityStateZip").text = f"{city}, {state} {zipc}".strip().strip(",")
+    ET.SubElement(hdr, "TaxYear").text    = str(data.get("tax_year", "")).strip()
+    ET.SubElement(hdr, "UsedOnDate").text = str(data.get("used_on_july", "")).strip()
+    # Optional flags
+    if data.get("address_change"):   ET.SubElement(hdr, "AddressChangeInd")
+    if data.get("amended_return"):   ET.SubElement(hdr, "AmendedReturnInd")
+    if data.get("vin_correction"):   ET.SubElement(hdr, "VINCorrectionInd")
+    if data.get("final_return"):     ET.SubElement(hdr, "FinalReturnInd")
 
-    # Validate top-level required fields
-    biz = data.get('business_name')
-    ein = data.get('ein')
-    if not biz or not str(biz).strip():
-        raise ValueError("Business name is required")
-    if not ein or not str(ein).strip():
-        raise ValueError("EIN is required")
-    # Optionally, ensure EIN is 9 digits:
-    ein_str = str(ein).strip()
-    if not re.fullmatch(r"\d{9}", ein_str):
-        raise ValueError(f"EIN '{ein}' is not 9 digits")
+    # ── Paid Preparer Person ──────────────────────────────
+    if data.get("preparer_name"):
+        prep = ET.SubElement(filer, "PreparerPersonGrp")
+        ET.SubElement(prep, "PreparerPersonNm").text = data.get("preparer_name", "").strip()
+        ET.SubElement(prep, "PTIN").text             = data.get("preparer_ptin", "").strip()
+        ET.SubElement(prep, "DatePrepared").text     = data.get("date_prepared", "").strip()
 
-    # Root element
-    filer = Element('IRS2290Filer')
+    # ── Paid Preparer Firm ───────────────────────────────
+    if data.get("preparer_firm_name"):
+        firm = ET.SubElement(filer, "PreparerFirmGrp")
+        ET.SubElement(firm, "BusinessNameLine1Txt").text = data.get("preparer_firm_name", "").strip()
+        ET.SubElement(firm, "EIN").text                 = data.get("preparer_firm_ein", "").replace("-", "").zfill(9)
+        ET.SubElement(firm, "AddressLine1Txt").text     = data.get("preparer_firm_address", "").strip()
+        ET.SubElement(firm, "CityStateInfo").text      = data.get("preparer_firm_citystatezip", "").strip()
+        ET.SubElement(firm, "DaytimePhoneNum").text     = data.get("preparer_firm_phone", "").strip()
 
-    # ReturnHeader
-    hdr = SubElement(filer, 'ReturnHeader')
-    SubElement(hdr, 'BusinessName').text    = biz.strip()
-    SubElement(hdr, 'EIN').text             = ein_str
-    SubElement(hdr, 'Address').text         = str(data.get('address', '') or '').strip()
-    city = str(data.get('city', '') or '').strip()
-    state = str(data.get('state', '') or '').strip()
-    zipc = str(data.get('zip', '') or '').strip()
-    SubElement(hdr, 'CityStateZip').text    = f"{city}, {state} {zipc}".strip().strip(',')
-    SubElement(hdr, 'TaxYear').text         = str(data.get('tax_year', '') or '').strip()
-    SubElement(hdr, 'UsedOnDate').text      = str(data.get('used_on_july', '') or '').strip()
-    SubElement(hdr, 'AddressChange').text   = str(bool(data.get('address_change'))).lower()
-    SubElement(hdr, 'AmendedReturn').text   = str(bool(data.get('amended_return'))).lower()
-    SubElement(hdr, 'VINCorrection').text   = str(bool(data.get('vin_correction'))).lower()
-    SubElement(hdr, 'FinalReturn').text     = str(bool(data.get('final_return'))).lower()
+    # ── Third-Party Designee / Consent ────────────────────
+    if data.get("consent_to_disclose"):   ET.SubElement(filer, "ConsentToDiscloseYesInd")
+    if data.get("designee_name"):
+        des = ET.SubElement(filer, "ThirdPartyDesignee")
+        ET.SubElement(des, "ThirdPartyDesigneeNm").text      = data.get("designee_name", "").strip()
+        ET.SubElement(des, "ThirdPartyDesigneePhoneNum").text= data.get("designee_phone", "").strip()
+        ET.SubElement(des, "ThirdPartyDesigneePIN").text     = data.get("designee_pin", "").strip()
 
-    # Vehicles
-    vehicles_el = SubElement(filer, 'Vehicles')
-    vehicles = data.get('vehicles')
-    if vehicles is None or not isinstance(vehicles, list) or len(vehicles) == 0:
-        # Depending on spec, it may require at least one vehicle
-        raise ValueError("At least one vehicle entry is required")
-    for idx, v in enumerate(vehicles, start=1):
-        # Validate each vehicle dict
-        if not isinstance(v, dict):
-            raise ValueError(f"Vehicle #{idx} is not an object")
-        vin = str(v.get('vin', '') or '').strip()
-        if not vin:
-            raise ValueError(f"Vehicle #{idx}: VIN is required")
-        # VIN pattern: typically 17 alphanumeric, but you may relax
-        if len(vin) != 17:
-            # Warn or error; here we error
-            raise ValueError(f"Vehicle #{idx}: VIN '{vin}' is not 17 characters")
-        cat = str(v.get('category', '') or '').strip()
-        if not cat:
-            raise ValueError(f"Vehicle #{idx}: category (weight class) is required")
-        if cat not in full_rates:
-            raise ValueError(f"Vehicle #{idx}: category '{cat}' is not valid")
-        used_month_raw = v.get('used_month')
-        try:
-            mon = parse_used_month(used_month_raw)
-        except ValueError as ve:
-            raise ValueError(f"Vehicle #{idx}: {ve}")
-        is_logging = bool(v.get('is_logging'))
-        is_suspended = bool(v.get('is_suspended'))
-        is_agri = bool(v.get('is_agricultural'))
-        # If Suspended (W), ensure category is 'W'?
-        if cat == 'W' and not (is_suspended or is_agri):
-            raise ValueError(f"Vehicle #{idx}: category 'W' requires is_suspended or is_agricultural flag")
-        # If non-W but suspended/agri flags set, you might want to clear or error:
-        # (depending on business logic; frontend likely already enforces mutual exclusion)
+    # ── Payment Indicator ────────────────────────────────
+    if data.get("payEFTPS"):
+        ET.SubElement(filer, "EFTPSPaymentInd")
+    elif data.get("payCard"):
+        ET.SubElement(filer, "CreditDebitCardPaymentInd")
 
-        # Create XML element
-        ve = SubElement(vehicles_el, 'Vehicle')
-        SubElement(ve, 'VIN').text            = vin
-        SubElement(ve, 'Category').text       = cat
-        # For UsedMonth XML: you may want full YYYYMM or just month; here we echo raw:
-        SubElement(ve, 'UsedMonth').text      = str(used_month_raw or "").strip()
-        SubElement(ve, 'IsLogging').text      = str(is_logging).lower()
-        SubElement(ve, 'IsSuspended').text    = str(is_suspended).lower()
-        SubElement(ve, 'IsAgricultural').text = str(is_agri).lower()
+    # ── Balance Due Amount (line 2) ───────────────────────
+    total_tax = 0.0
+    for v in data.get("vehicles", []):
+        cat       = v.get("category", "").strip()
+        used      = v.get("used_month", "").strip()
+        logging   = bool(v.get("is_logging"))
+        # prorate
+        mon = int(used[-2:]) if used.isdigit() else 0
+        months_left = 12 if mon >= 7 else (13 - mon if 1 <= mon <= 12 else 0)
+        base = LOGGING_RATES[cat] if logging else WEIGHT_RATES[cat]
+        amt = round(base * (months_left / 12), 2)
+        total_tax += amt
+    ET.SubElement(filer, "BalanceDueAmt").text = f"{total_tax:.2f}"
 
-        # Tax calculation
-        # Use correct rate dict:
-        if cat not in full_rates:
-            raise ValueError(f"Vehicle #{idx}: category '{cat}' has no rate")
-        rate = logging_rates[cat] if is_logging else full_rates[cat]
-        # Suspended or agricultural => zero tax
-        if is_suspended or is_agri:
-            tax = 0.0
-        else:
-            if mon == 7:
-                tax = rate
-            else:
-                months_left = 13 - mon
-                if months_left <= 0:
-                    months_left += 12
-                tax = round((rate * months_left) / 12, 2)
-        SubElement(ve, 'TaxAmount').text = f"{tax:.2f}"
+    # ── Schedule 1: Vehicles ──────────────────────────────
+    sched1 = ET.SubElement(root, "IRS2290Schedule1")
+    for v in data.get("vehicles", []):
+        vin       = v.get("vin", "").strip()
+        cat       = v.get("category", "").strip()
+        used      = v.get("used_month", "").strip()
+        logging   = bool(v.get("is_logging"))
+        agr       = bool(v.get("is_agricultural"))
+        suspended = bool(v.get("is_suspended"))
+        mileage5k = bool(v.get("mileage_5000_or_less"))
 
-    # Signature
-    # Signature fields might be optional or required. Validate if required.
-    sig = SubElement(filer, 'Signature')
-    signer = str(data.get('signature', '') or '').strip()
-    printed = str(data.get('printed_name', '') or '').strip()
-    sig_date = str(data.get('signature_date', '') or '').strip()
-    # If signature fields are required:
-    # if not signer or not printed or not sig_date:
-    #     raise ValueError("Signature, PrintedName, SignatureDate are all required")
-    SubElement(sig, 'SignerName').text    = signer
-    SubElement(sig, 'PrintedName').text   = printed
-    SubElement(sig, 'SignatureDate').text = sig_date
+        item_tag = "VehicleSuspendedTaxItem" if suspended else "VehicleReportTaxItem"
+        item = ET.SubElement(sched1, item_tag)
 
-    # PaymentMethod
-    pm = SubElement(filer, 'PaymentMethod')
-    if data.get('payEFTPS'):
-        # Validate routing/account presence
-        routing = str(data.get('eftps_routing', '') or '').strip()
-        account = str(data.get('eftps_account', '') or '').strip()
-        if not routing or not account:
-            raise ValueError("EFTPS selected but routing/account missing")
-        SubElement(pm, 'Method').text         = 'EFTPS'
-        SubElement(pm, 'RoutingNumber').text  = routing
-        SubElement(pm, 'AccountNumber').text  = account
-    elif data.get('payCard'):
-        name = str(data.get('card_holder', '') or '').strip()
-        num  = str(data.get('card_number', '') or '').strip()
-        exp  = str(data.get('card_exp', '') or '').strip()
-        cvv  = str(data.get('card_cvv', '') or '').strip()
-        # Basic validation: non-empty
-        if not (name and num and exp and cvv):
-            raise ValueError("Card payment selected but fields missing")
-        SubElement(pm, 'Method').text         = 'Card'
-        SubElement(pm, 'CardholderName').text = name
-        SubElement(pm, 'CardNumber').text     = num
-        SubElement(pm, 'Expiration').text     = exp
-        SubElement(pm, 'CVV').text            = cvv
-    else:
-        # No payment selected: depending on spec, may be allowed or error
-        SubElement(pm, 'Method').text = 'None'
+        ET.SubElement(item, "VIN").text       = vin
+        ET.SubElement(item, "Category").text  = cat
+        ET.SubElement(item, "UsedMonth").text = used
 
-    # Pretty print
-    rough = tostring(filer, 'utf-8')
-    dom   = parseString(rough)
-    # Optionally include XML declaration:
-    pretty = dom.toprettyxml(indent='  ')
-    # Optionally strip extraneous blank lines:
-    lines = [line for line in pretty.splitlines() if line.strip()]
-    return "\n".join(lines)
+        # prorated tax
+        mon = int(used[-2:]) if used.isdigit() else 0
+        months_left = 12 if mon >= 7 else (13 - mon if 1 <= mon <= 12 else 0)
+        base = LOGGING_RATES[cat] if logging else WEIGHT_RATES[cat]
+        amt = round(base * (months_left / 12), 2)
+        ET.SubElement(item, "TaxAmount").text = f"{amt:.2f}"
+
+        if logging:  ET.SubElement(item, "LoggingVehicleInd")
+        if agr:      ET.SubElement(item, "AgricMileageUsed7500OrLessInd")
+        if mileage5k:ET.SubElement(item, "Mileage5000OrLessInd")
+
+    # ── pretty-print & return XML string ────────────────
+    rough = ET.tostring(root, encoding="utf-8")
+    return minidom.parseString(rough).toprettyxml(indent="  ")
