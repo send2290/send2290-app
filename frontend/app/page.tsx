@@ -189,7 +189,7 @@ export default function Form2290() {
       const idx = parseInt(idxStr, 10)
       const field = fld.join('_') as keyof Vehicle
       const vehicles = [...formData.vehicles]
-      const vv = { ...vehicles[idx] }
+      const vv = { ...vehicles[idx] } as Record<string, any>
       if (type === 'checkbox') {
         vv[field] = checked as any
         if (field === 'is_agricultural' && checked) vv.is_suspended = false
