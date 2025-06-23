@@ -408,7 +408,7 @@ export default function Form2290() {
   return (
     <div style={container}>
       <h1 style={header}>Send2290</h1>
-      <p style={{ textAlign: 'center', marginTop: -8 }}>By Consulting, PLLC</p>
+      <p style={{ textAlign: 'center', marginTop: -8 }}>By Majd Consulting, PLLC</p>
 
       {/* Business Info */}
       <h2>Business Info</h2>
