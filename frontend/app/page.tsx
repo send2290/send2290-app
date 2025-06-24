@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useEffect, ChangeEvent } from 'react'
+import { auth } from '../lib/firebase'
+import LoginForm from './LoginForm'
 
 export const weightCategories = [
   { label: 'A (55,000 lbs)',          value: 'A', tax: 100.00 },
@@ -48,7 +50,6 @@ export default function Form2290() {
 
   // Form state
   const [formData, setFormData] = useState({
-    // Filer / ReturnHeader
     business_name:   '',
     ein:             '',
     address:         '',
@@ -61,8 +62,6 @@ export default function Form2290() {
     amended_return:  false,
     vin_correction:  false,
     final_return:    false,
-
-    // Include Paid Preparer?
     include_preparer: false,
     preparer_name:           '',
     preparer_ptin:           '',
@@ -72,14 +71,10 @@ export default function Form2290() {
     preparer_firm_address:   '',
     preparer_firm_citystatezip: '',
     preparer_firm_phone:     '',
-
-    // Third-Party Designee / Consent
     consent_to_disclose: false,
     designee_name:       '',
     designee_phone:      '',
     designee_pin:        '',
-
-    // Vehicles (Schedule 1)
     vehicles: [
       {
         vin: '',
@@ -91,13 +86,9 @@ export default function Form2290() {
         mileage_5000_or_less: false,
       },
     ] as Vehicle[],
-
-    // Signature
     signature:      '',
     printed_name:   '',
     signature_date: '',
-
-    // Payment
     payEFTPS:      false,
     payCard:       false,
     eftps_routing: '',
@@ -107,6 +98,9 @@ export default function Form2290() {
     card_exp:      '',
     card_cvv:      '',
   })
+
+  // ** NEW: Login toggle state **
+  const [showLogin, setShowLogin] = useState(false)
 
   const [totalTax, setTotalTax] = useState(0)
   const todayStr = new Date().toISOString().split('T')[0]
@@ -260,7 +254,6 @@ export default function Form2290() {
   const validateBeforeSubmit = (): string | null => {
     if (!formData.business_name.trim()) return 'Business Name is required'
     if (!/^\d{9}$/.test(formData.ein))     return 'EIN must be 9 digits'
-
     if (formData.include_preparer) {
       if (!formData.preparer_name.trim())      return 'Preparer Name is required'
       if (!formData.preparer_ptin.trim())      return 'Preparer PTIN is required'
@@ -271,17 +264,14 @@ export default function Form2290() {
       if (!formData.preparer_firm_citystatezip.trim()) return 'Firm City/State/ZIP is required'
       if (!/^\d{10}$/.test(formData.preparer_firm_phone)) return 'Firm Phone must be 10 digits'
     }
-
     if (formData.consent_to_disclose) {
       if (!formData.designee_name.trim())       return 'Designee Name is required'
       if (!/^\d{10}$/.test(formData.designee_phone)) return 'Designee Phone must be 10 digits'
       if (!formData.designee_pin.trim())        return 'Designee PIN is required'
     }
-
     if (!formData.signature.trim())    return 'Signature is required'
     if (!formData.printed_name.trim()) return 'Printed Name is required'
     if (!formData.signature_date)      return 'Signature Date is required'
-
     if (!formData.payEFTPS && !formData.payCard) {
       return 'Select either EFTPS or Credit/Debit Card'
     }
@@ -298,19 +288,16 @@ export default function Form2290() {
         return 'All credit/debit card fields are required'
       }
     }
-
     return null
   }
 
   const handleSubmit = async () => {
-    // 0️⃣ Front-end validation
     const err = validateBeforeSubmit()
     if (err) {
       alert(err)
       return
     }
 
-    // 1️⃣ Group your vehicles by used_month
     const groups = formData.vehicles.reduce<Record<string, Vehicle[]>>((acc, v) => {
       if (!v.used_month) return acc
       if (!acc[v.used_month]) acc[v.used_month] = []
@@ -324,7 +311,6 @@ export default function Form2290() {
       return
     }
 
-    // 2️⃣ For each month‐group, overwrite used_on_july & vehicles, then POST
     for (const month of months) {
       const payload = {
         ...formData,
@@ -333,32 +319,28 @@ export default function Form2290() {
       }
 
       try {
-        // POST to build it
-        const buildRes = await fetch(`${API_BASE}/build-xml`, {
+        const token = await auth.currentUser!.getIdToken()
+          const buildRes = await fetch(`${API_BASE}/build-xml`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify(payload),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify(payload),
         })
         if (!buildRes.ok) {
           const errJson = await buildRes.json().catch(() => ({}))
           alert(`Error building XML for ${month}: ${errJson.error || buildRes.status}`)
           continue
         }
-
-        // Parse JSON and extract xml string
         const { xml: xmlString } = await buildRes.json()
-
-        // Turn that string into a proper XML blob
         const xmlBlob = new Blob([xmlString], { type: 'application/xml' })
-
-        // Download it
-        const url = URL.createObjectURL(xmlBlob)
-        const a   = document.createElement('a')
-        a.href     = url
-        a.download = `form2290_${month}.xml`
+        const url     = URL.createObjectURL(xmlBlob)
+        const a       = document.createElement('a')
+        a.href        = url
+        a.download    = `form2290_${month}.xml`
         a.click()
         URL.revokeObjectURL(url)
-
       } catch (e: any) {
         alert(`Network error for ${month}: ${e.message}`)
       }
@@ -367,7 +349,11 @@ export default function Form2290() {
 
   const handleDownloadPDF = async () => {
     try {
-      const pdfRes = await fetch(`${API_BASE}/download-pdf`)
+      const token = await auth.currentUser!.getIdToken()
+      const pdfRes = await fetch(`${API_BASE}/download-pdf`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+
       const blob   = await pdfRes.blob()
       const url    = URL.createObjectURL(blob)
       const a      = document.createElement('a')
@@ -407,6 +393,23 @@ export default function Form2290() {
 
   return (
     <div style={container}>
+      {/* 🔒 Login Toggle */}
+      <div style={{ textAlign: 'center', marginBottom: 20 }}>
+        <button
+          onClick={() => setShowLogin(prev => !prev)}
+          style={{ padding: '6px 12px', borderRadius: 4, backgroundColor: '#1565c0', color: '#fff', border: 'none' }}
+        >
+          {showLogin ? 'Hide Login' : 'Login or Create Account'}
+        </button>
+      </div>
+
+      {/* 🔒 Login Form */}
+      {showLogin && (
+        <div style={{ maxWidth: 420, margin: '0 auto', marginBottom: 30 }}>
+          <LoginForm />
+        </div>
+      )}
+
       <h1 style={header}>Website Under Development!</h1>
       <p style={{ textAlign: 'center', marginTop: -8 }}>By Majd Consulting, PLLC</p>
 
