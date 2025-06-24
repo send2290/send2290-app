@@ -1,36 +1,33 @@
 from flask import Flask, request, jsonify, send_file, make_response
-from flask_cors import CORS, cross_origin
+from flask_cors import CORS
 import os
 import io
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 from PyPDF2 import PdfReader, PdfWriter
-
-# Import xml_builder from same folder
-# Ensure xml_builder.py is next to this file
 from xml_builder import build_2290_xml
 
 app = Flask(__name__)
 
-# ----------------------
-# CORS: allow all origins and methods for production
-# Use both global CORS and after_request headers to ensure preflight headers are present
+# ── CORS: Restrict to trusted domains ──────────────────────────────
 CORS(
     app,
-    resources={r"/*": {"origins": "*"}},
+    resources={r"/*": {"origins": [
+        "https://send2290.com",
+        "https://www.send2290.com"
+    ]}},
     methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"],
 )
 
 @app.after_request
 def add_cors_headers(response):
-    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Origin"] = request.headers.get("Origin", "")
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
     response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
     return response
-# ----------------------
+# ───────────────────────────────────────────────────────────────────
 
-# Helper: always resolve files relative to this script's directory
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 @app.route("/", methods=["GET"])
@@ -41,13 +38,10 @@ def index():
 
 @app.route("/build-xml", methods=["POST", "OPTIONS"])
 def generate_xml():
-    # Handle preflight OPTIONS
     if request.method == "OPTIONS":
-        resp = make_response(jsonify({}), 200)
-        return resp
+        return make_response(jsonify({}), 200)
 
     data = request.get_json() or {}
-    # Optional: basic validation
     if not data.get("business_name") or not data.get("ein"):
         return jsonify({"error": "Missing business_name or ein"}), 400
 
@@ -57,7 +51,6 @@ def generate_xml():
         app.logger.error("Error in build_2290_xml: %s", e, exc_info=True)
         return jsonify({"error": f"Error building XML: {str(e)}"}), 500
 
-    # Ensure xml_data is string
     if isinstance(xml_data, bytes):
         try:
             xml_data = xml_data.decode("utf-8")
@@ -72,7 +65,6 @@ def generate_xml():
         app.logger.error("Failed to write XML file: %s", e, exc_info=True)
         return jsonify({"error": f"Failed to write XML file: {str(e)}"}), 500
 
-    # Store last form data for PDF generation
     app.config["last_form_data"] = data
 
     return jsonify({"message": "✅ XML generated", "xml": xml_data}), 200
@@ -82,7 +74,6 @@ def download_xml():
     xml_path = os.path.join(SCRIPT_DIR, "form2290.xml")
     if not os.path.exists(xml_path):
         return jsonify({"error": "XML not generated yet"}), 404
-    # Optionally specify download_name
     return send_file(xml_path, mimetype="application/xml", as_attachment=True)
 
 @app.route("/download-pdf", methods=["GET"])
@@ -105,13 +96,11 @@ def download_pdf():
     writer = PdfWriter()
     overlays = []
 
-    # Build overlay pages
     for page_index in range(len(template.pages)):
         packet = io.BytesIO()
         can = canvas.Canvas(packet, pagesize=letter)
 
         if page_index == 0:
-            # Header fields
             can.setFont("Helvetica", 10)
             can.drawString(105, 715, data.get("business_name", ""))
             can.drawString(365, 715, data.get("ein", ""))
@@ -122,7 +111,6 @@ def download_pdf():
             zipcode = data.get("zip", "")
             city_state = f"{city}, {state} {zipcode}".strip()
             can.drawString(105, 674, city_state)
-            # Checkboxes
             if data.get("address_change"):
                 can.drawString(95, 652, "✔")
             if data.get("amended_return"):
@@ -161,7 +149,6 @@ def download_pdf():
             app.logger.error("Failed to create overlay for page %d: %s", page_index, e, exc_info=True)
             return jsonify({"error": f"Failed to create overlay for page {page_index}: {str(e)}"}), 500
 
-    # Merge overlays onto template pages
     for idx, page in enumerate(template.pages):
         try:
             page.merge_page(overlays[idx])
@@ -170,7 +157,6 @@ def download_pdf():
             return jsonify({"error": f"Failed to merge overlay on page {idx}: {str(e)}"}), 500
         writer.add_page(page)
 
-    # Write result PDF
     out_dir = os.path.join(SCRIPT_DIR, "output")
     os.makedirs(out_dir, exist_ok=True)
     out_path = os.path.join(out_dir, "form2290_filled.pdf")
@@ -181,9 +167,7 @@ def download_pdf():
         app.logger.error("Failed to write filled PDF: %s", e, exc_info=True)
         return jsonify({"error": f"Failed to write filled PDF: {str(e)}"}), 500
 
-    # Return the filled PDF
     return send_file(out_path, as_attachment=True)
 
 if __name__ == "__main__":
-    # For local dev: listen on all interfaces so LAN IP can reach it
     app.run(host="0.0.0.0", port=5000, debug=True)
