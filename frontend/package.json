@@ -1,19 +1,28 @@
 {
-  "name": "my-next-app",
-  "version": "0.1.0",
+  "name": "send2290-frontend",
+  "version": "1.0.0",
+  "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start"
   },
   "dependencies": {
-    "next": "latest",
-    "react": "latest",
-    "react-dom": "latest"
+    "next": "15.3.4",
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "firebase": "^10.0.0"
   },
   "devDependencies": {
-    "@types/node": "24.0.3",
-    "@types/react": "19.1.8",
-    "typescript": "5.8.3"
+    "typescript": "^5.0.0",
+    "@types/react": "^18.0.0",
+    "@types/node": "^18.0.0",
+    "tailwindcss": "^3.4.0",
+    "postcss": "^8.4.0",
+    "autoprefixer": "^10.4.0",
+    "dotenv": "^1.1.1"
+  },
+  "overrides": {
+    "undici": "7.10.0"
   }
 }
