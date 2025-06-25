@@ -1,5 +1,9 @@
 Flask
-gunicorn
 flask-cors
-PyPDF2
 reportlab
+PyPDF2
+boto3
+sqlalchemy
+psycopg2-binary
+firebase-admin
+python-dotenv
