@@ -61,7 +61,7 @@ import firebase_admin
 from firebase_admin import credentials, auth as firebase_auth
 from functools import wraps
 
-service_account_path = os.path.join(os.path.dirname(__file__), "firebase-service-account.json")
+service_account_path = "/etc/secrets/firebase-service-account.json"
 if not os.path.exists(service_account_path):
     raise FileNotFoundError(
         f"\nERROR: 'firebase-service-account.json' not found at: {service_account_path}\n"
