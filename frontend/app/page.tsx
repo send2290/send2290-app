@@ -1,8 +1,10 @@
-'use client'
-
+"use client";
 import { useState, useEffect, ChangeEvent } from 'react'
 import { auth } from '../lib/firebase'
+import { onAuthStateChanged, signOut } from 'firebase/auth'
 import LoginForm from './LoginForm'
+import LoginModal from './LoginModal'
+import { checkUserExists, createUserAndSendPassword } from '../lib/authUtils'
 
 export const weightCategories = [
   { label: 'A (55,000 lbs)',          value: 'A', tax: 100.00 },
@@ -41,6 +43,20 @@ type Vehicle = {
 }
 
 export default function Form2290() {
+  // --- Auth state & logout ---
+  const [user, setUser] = useState<any>(null)
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, u => setUser(u))
+    return unsubscribe
+  }, [])
+  const handleLogout = async () => {
+    try {
+      await signOut(auth)
+    } catch (e) {
+      alert('Logout failed')
+    }
+  }
+
   // Determine API base URL
   const isBrowser = typeof window !== 'undefined'
   const defaultApi = isBrowser
@@ -48,21 +64,22 @@ export default function Form2290() {
     : ''
   const API_BASE = process.env.NEXT_PUBLIC_API_URL || defaultApi
 
-  // Form state
+  // Form state (added `email`)
   const [formData, setFormData] = useState({
-    business_name:   '',
-    ein:             '',
-    address:         '',
-    city:            '',
-    state:           '',
-    zip:             '',
-    tax_year:        '2025',
-    used_on_july:    '202507',
-    address_change:  false,
-    amended_return:  false,
-    vin_correction:  false,
-    final_return:    false,
-    include_preparer: false,
+    email:             '',
+    business_name:     '',
+    ein:               '',
+    address:           '',
+    city:              '',
+    state:             '',
+    zip:               '',
+    tax_year:          '2025',
+    used_on_july:      '202507',
+    address_change:    false,
+    amended_return:    false,
+    vin_correction:    false,
+    final_return:      false,
+    include_preparer:  false,
     preparer_name:           '',
     preparer_ptin:           '',
     date_prepared:           '',
@@ -89,18 +106,20 @@ export default function Form2290() {
     signature:      '',
     printed_name:   '',
     signature_date: '',
-    payEFTPS:      false,
-    payCard:       false,
-    eftps_routing: '',
-    eftps_account: '',
-    card_holder:   '',
-    card_number:   '',
-    card_exp:      '',
-    card_cvv:      '',
+    payEFTPS:       false,
+    payCard:        false,
+    eftps_routing:  '',
+    eftps_account:  '',
+    card_holder:    '',
+    card_number:    '',
+    card_exp:       '',
+    card_cvv:       '',
   })
 
-  // ** NEW: Login toggle state **
-  const [showLogin, setShowLogin] = useState(false)
+  // Login UI states
+  const [showLogin, setShowLogin]           = useState(false)
+  const [showLoginModal, setShowLoginModal] = useState(false)
+  const [pendingEmail, setPendingEmail]     = useState('')
 
   const [totalTax, setTotalTax] = useState(0)
   const todayStr = new Date().toISOString().split('T')[0]
@@ -215,7 +234,7 @@ export default function Form2290() {
       return
     }
 
-    // Default update
+    // Default update (now includes email)
     setFormData({
       ...formData,
       [name]: type === 'checkbox' ? checked : value,
@@ -292,19 +311,58 @@ export default function Form2290() {
   }
 
   const handleSubmit = async () => {
+    // 1) run client-side validation FIRST
     const err = validateBeforeSubmit()
-    if (err) {
-      alert(err)
+    if (err) { alert(err); return }
+
+    // 2) require email
+    if (!formData.email.trim()) {
+      alert('Email is required')
       return
     }
 
+    // 3) Check/create account if not signed in
+    if (!auth.currentUser) {
+      let exists = false
+      try {
+        exists = await checkUserExists(formData.email)
+      } catch (e: any) {
+        if (e?.status === 404) {
+          exists = false
+        } else {
+          alert("Error checking user: " + (e?.message || JSON.stringify(e)))
+          return
+        }
+      }
+
+      if (!exists) {
+        try {
+          const didCreate = await createUserAndSendPassword(formData.email)
+          if (didCreate) {
+            alert("Account created! Check your email for your password.")
+          } else {
+            console.log("⚠️ [Signup] createUserAndSendPassword returned false")
+          }
+        } catch (e: any) {
+          if (e?.status === 404) {
+            alert("Account created, but welcome email could not be sent. Please contact support.")
+          } else {
+            alert("Error creating account: " + (e?.message || JSON.stringify(e)))
+          }
+          // Do not return; continue to XML generation
+        }
+      } else {
+        console.log("👤 [Signup] User already exists – skipping creation")
+      }
+    }
+
+    // 4) now signed in → proceed to build XML
     const groups = formData.vehicles.reduce<Record<string, Vehicle[]>>((acc, v) => {
       if (!v.used_month) return acc
       if (!acc[v.used_month]) acc[v.used_month] = []
       acc[v.used_month].push(v)
       return acc
     }, {})
-
     const months = Object.keys(groups)
     if (months.length === 0) {
       alert("Please select a month of first use for at least one vehicle.")
@@ -319,21 +377,42 @@ export default function Form2290() {
       }
 
       try {
-        const token = await auth.currentUser!.getIdToken()
-          const buildRes = await fetch(`${API_BASE}/build-xml`, {
+        // build & download XML
+        const headers: Record<string,string> = {
+          'Content-Type': 'application/json',
+        }
+        if (auth.currentUser) {
+          const token = await auth.currentUser.getIdToken()
+          headers.Authorization = `Bearer ${token}`
+        }
+
+        const buildRes = await fetch(`${API_BASE}/build-xml`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
+          headers,
           body: JSON.stringify(payload),
         })
         if (!buildRes.ok) {
-          const errJson = await buildRes.json().catch(() => ({}))
-          alert(`Error building XML for ${month}: ${errJson.error || buildRes.status}`)
-          continue
+        // try to pull a JSON error, otherwise fall back to statusText
+        let errMsg = buildRes.statusText
+        try {
+          const errJson = await buildRes.json()
+          errMsg = errJson.error || errMsg
+        } catch {
+          // non-JSON body; leave errMsg as statusText
         }
-        const { xml: xmlString } = await buildRes.json()
+        alert(`Error building XML for ${month}: ${errMsg}`)
+        continue
+      }
+
+      let xmlString: string
+      try {
+        // now parse the success response
+        const data = await buildRes.json()
+        xmlString = data.xml
+      } catch (e: any) {
+        alert(`Invalid server response for ${month}: ${e.message}`)
+        continue
+      }
         const xmlBlob = new Blob([xmlString], { type: 'application/xml' })
         const url     = URL.createObjectURL(xmlBlob)
         const a       = document.createElement('a')
@@ -354,11 +433,11 @@ export default function Form2290() {
         headers: { 'Authorization': `Bearer ${token}` }
       })
 
-      const blob   = await pdfRes.blob()
-      const url    = URL.createObjectURL(blob)
-      const a      = document.createElement('a')
-      a.href       = url
-      a.download   = 'form2290.pdf'
+      const blob = await pdfRes.blob()
+      const url  = URL.createObjectURL(blob)
+      const a    = document.createElement('a')
+      a.href     = url
+      a.download = 'form2290.pdf'
       a.click()
       URL.revokeObjectURL(url)
     } catch {
@@ -393,29 +472,62 @@ export default function Form2290() {
 
   return (
     <div style={container}>
-      {/* 🔒 Login Toggle */}
-      <div style={{ textAlign: 'center', marginBottom: 20 }}>
-        <button
-          onClick={() => setShowLogin(prev => !prev)}
-          style={{ padding: '6px 12px', borderRadius: 4, backgroundColor: '#1565c0', color: '#fff', border: 'none' }}
-        >
-          {showLogin ? 'Hide Login' : 'Login or Create Account'}
-        </button>
+      {/* --- Auth Status & Login/Logout --- */}
+      <div style={{ textAlign: 'right', marginBottom: 20 }}>
+        {user ? (
+          <>
+            Logged in as <strong>{user.email}</strong>{' '}
+            <button
+              onClick={handleLogout}
+              style={{ ...btnSmall, backgroundColor: '#d32f2f', color: '#fff' }}
+            >
+              Logout
+            </button>
+          </>
+        ) : (
+          <span style={{ fontStyle: 'italic' }}>Not signed in</span>
+        )}
       </div>
 
-      {/* 🔒 Login Form */}
-      {showLogin && (
+      {/* --- Login Toggle --- */}
+      {!user && (
+        <div style={{ textAlign: 'center', marginBottom: 20 }}>
+          <button
+            onClick={() => setShowLogin(prev => !prev)}
+            style={{ padding: '6px 12px', borderRadius: 4, backgroundColor: '#1565c0', color: '#fff', border: 'none' }}
+          >
+            {showLogin ? 'Hide Login' : 'Login or Create Account'}
+          </button>
+        </div>
+      )}
+
+      {/* --- Embedded Login Form --- */}
+      {showLogin && !user && (
         <div style={{ maxWidth: 420, margin: '0 auto', marginBottom: 30 }}>
           <LoginForm />
         </div>
       )}
 
+      {/* --- Login Modal for existing users --- */}
+      {showLoginModal && (
+        <LoginModal email={pendingEmail} onClose={() => setShowLoginModal(false)} />
+      )}
+
       <h1 style={header}>Website Under Development!</h1>
       <p style={{ textAlign: 'center', marginTop: -8 }}>By Majd Consulting, PLLC</p>
 
-      {/* Business Info */}
+      {/* Business Info (now includes Email at the start) */}
       <h2>Business Info</h2>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {/* ← NEW EMAIL FIELD */}
+        <input
+          name="email"
+          type="email"
+          placeholder="Email"
+          value={formData.email}
+          onChange={handleChange}
+          required
+        />
         <input name="business_name" placeholder="Name" value={formData.business_name} onChange={handleChange} />
         <input
           name="ein"

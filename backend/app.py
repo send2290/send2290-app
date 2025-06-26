@@ -61,12 +61,19 @@ import firebase_admin
 from firebase_admin import credentials, auth as firebase_auth
 from functools import wraps
 
-service_account_path = "/etc/secrets/firebase-service-account.json"
+# Choose service-account file path based on FLASK_ENV
+if os.getenv("FLASK_ENV") == "development":
+    service_account_path = os.path.join(os.path.dirname(__file__), "firebase-service-account.json")
+else:
+    service_account_path = "/etc/secrets/firebase-service-account.json"
+
 if not os.path.exists(service_account_path):
     raise FileNotFoundError(
-        f"\nERROR: 'firebase-service-account.json' not found at: {service_account_path}\n"
-        "Please download it from Firebase Console > Service Accounts and place it here."
+        f"\nERROR: service account JSON not found at: {service_account_path}\n"
+        "If running locally, set FLASK_ENV=development and place firebase-service-account.json in the backend folder.\n"
+        "In production, ensure it is mounted at /etc/secrets/firebase-service-account.json."
     )
+
 cred = credentials.Certificate(service_account_path)
 firebase_admin.initialize_app(cred)
 
@@ -83,6 +90,10 @@ BUCKET = os.getenv('FILES_BUCKET')
 def verify_firebase_token(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
+        # Let CORS preflight through
+        if request.method == "OPTIONS":
+            return make_response("", 200)
+
         auth_header = request.headers.get('Authorization', '')
         if not auth_header.startswith('Bearer '):
             return jsonify({"error": "Authorization header missing or malformed"}), 401
@@ -92,6 +103,7 @@ def verify_firebase_token(f):
             request.user = decoded
         except Exception as e:
             return jsonify({"error": "Invalid or expired token", "details": str(e)}), 403
+
         return f(*args, **kwargs)
     return wrapper
 
@@ -222,4 +234,5 @@ def download_pdf():
     return send_file(out_path, as_attachment=True)
 
 if __name__ == "__main__":
+    # In local development, set FLASK_ENV=development so it loads your local JSON.
     app.run(host="0.0.0.0", port=5000, debug=True)
