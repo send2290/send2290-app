@@ -1,22 +1,9 @@
 import os
 from dotenv import load_dotenv
 load_dotenv()
-DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///./local.db')
-
-import io
-import datetime
-import boto3
-import botocore
-from flask import Flask, request, jsonify, send_file, make_response, g
-from flask_cors import CORS
-from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import letter
-from PyPDF2 import PdfReader, PdfWriter
-from xml_builder import build_2290_xml
-import json
-
-from sqlalchemy import create_engine, Column, String, Integer, DateTime, text, JSON, Text
-from sqlalchemy.orm import sessionmaker, declarative_base
+DATABASE_URL = os.getenv('DATABASE_URL')
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL environment variable is not set!")
 
 engine = create_engine(DATABASE_URL, echo=False)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
