@@ -5,6 +5,7 @@ import { onAuthStateChanged, signOut } from 'firebase/auth'
 import LoginForm from './LoginForm'
 import LoginModal from './LoginModal'
 import { checkUserExists, createUserAndSendPassword } from '../lib/authUtils'
+import { DateTime } from "luxon";
 
 export const weightCategories = [
   { label: 'A (55,000 lbs)',          value: 'A', tax: 100.00 },
@@ -43,6 +44,9 @@ type Vehicle = {
 }
 
 export default function Form2290() {
+  // Always get today's date in America/New_York (Eastern) as YYYY-MM-DD
+  const easternToday = DateTime.now().setZone("America/New_York").toISODate();
+
   // --- Auth state & logout ---
   const [user, setUser] = useState<any>(null)
   useEffect(() => {
@@ -105,7 +109,7 @@ export default function Form2290() {
     ] as Vehicle[],
     signature:      '',
     printed_name:   '',
-    signature_date: '',
+    signature_date: easternToday,
     payEFTPS:       false,
     payCard:        false,
     eftps_routing:  '',
@@ -435,24 +439,34 @@ export default function Form2290() {
     }
   }
 
-  const handleDownloadPDF = async () => {
+  const handleBuildAndDownloadPDF = async () => {
     try {
-      const token = await auth.currentUser!.getIdToken()
-      const pdfRes = await fetch(`${API_BASE}/download-pdf`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      })
+      const token = await auth.currentUser!.getIdToken();
+      const pdfRes = await fetch(`${API_BASE}/build-pdf`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(formData),
+      });
 
-      const blob = await pdfRes.blob()
-      const url  = URL.createObjectURL(blob)
-      const a    = document.createElement('a')
-      a.href     = url
-      a.download = 'form2290.pdf'
-      a.click()
-      URL.revokeObjectURL(url)
+      if (!pdfRes.ok) {
+        alert("PDF generation failed");
+        return;
+      }
+
+      const blob = await pdfRes.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "form2290.pdf";
+      a.click();
+      URL.revokeObjectURL(url);
     } catch {
-      alert('PDF download failed')
+      alert("PDF download failed");
     }
-  }
+  };
 
   // Styles
   const container: React.CSSProperties  = {
@@ -481,6 +495,8 @@ export default function Form2290() {
 
   return (
     <div style={container}>
+      {/* --- Website Banner --- */}
+      
       {/* --- Auth Status & Login/Logout --- */}
       <div style={{ textAlign: 'right', marginBottom: 20 }}>
         {user ? (
@@ -521,9 +537,6 @@ export default function Form2290() {
       {showLoginModal && (
         <LoginModal email={pendingEmail} onClose={() => setShowLoginModal(false)} />
       )}
-
-      <h1 style={header}>Website Under Development!</h1>
-      <p style={{ textAlign: 'center', marginTop: -8 }}>By Majd Consulting, PLLC</p>
 
       {/* Business Info (now includes Email at the start) */}
       <h2>Business Info</h2>
@@ -721,7 +734,14 @@ export default function Form2290() {
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <input name="signature" placeholder="Signature" value={formData.signature} onChange={handleChange} />
         <input name="printed_name" placeholder="Printed Name" value={formData.printed_name} onChange={handleChange} />
-        <input type="date" name="signature_date" min={todayStr} value={formData.signature_date} onChange={handleChange} />
+        <input
+          type="date"
+          name="signature_date"
+          value={formData.signature_date}
+          readOnly
+          disabled
+          style={{ background: "#eee", color: "#888" }}
+        />
       </div>
 
       {/* Payment Method */}
@@ -751,19 +771,21 @@ export default function Form2290() {
 
       {/* Actions */}
       <div style={{ marginTop: 20, display: 'flex', gap: 12 }}>
-        <button
+        {/* REMOVE the Generate XML button */}
+        {/* <button
           type="button"
           style={{ ...btnSmall, backgroundColor: '#002855', color: '#fff' }}
           onClick={handleSubmit}
         >
           Generate XML
-        </button>
+        </button> */}
+        {/* CHANGE Download PDF to SUBMIT */}
         <button
           type="button"
           style={{ ...btnSmall, backgroundColor: '#28a745', color: '#fff' }}
-          onClick={handleDownloadPDF}
+          onClick={handleBuildAndDownloadPDF}
         >
-          Download PDF
+          SUBMIT
         </button>
       </div>
     </div>

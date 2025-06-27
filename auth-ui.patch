@@ -1,465 +1,86 @@
-```diff
-*** Begin Patch
-*** Update File: frontend/app/Form2290.tsx
-@@ -1,7 +1,9 @@
--use client";
--import React, { useState, useEffect, ChangeEvent } from 'react';
--import { auth } from '../lib/firebase';
-+"use client";
-+import React, { useState, useEffect, ChangeEvent } from 'react';
-+import { auth } from '../lib/firebase';
-+import { onAuthStateChanged, signOut } from 'firebase/auth';
- import LoginForm from './LoginForm';
- import LoginModal from './LoginModal';
- import { checkUserExists, createUserAndSendPassword } from '../lib/authUtils';
-@@
- export default function Form2290() {
--  // Auth state & logout
--  const [user, setUser] = useState<any>(null);
--  useEffect(() => {
--    const unsubscribe = onAuthStateChanged(auth, (u) => setUser(u));
--    return unsubscribe;
--  }, []);
--  const handleLogout = async () => {
--    try {
--      await signOut(auth);
--    } catch (e) {
--      console.error('Logout error', e);
--    }
--  };
-+  // — auth state & logout —
-+  const [user, setUser] = useState<any>(null);
+diff --git a/components/Form2290.tsx b/components/Form2290.tsx
+index 0123456..789abcd 100644
+--- a/components/Form2290.tsx
++++ b/components/Form2290.tsx
+@@ -1,5 +1,8 @@
+-"use client";
+-import { useState, useEffect, ChangeEvent } from 'react'
++ "use client";
++ import React, { useState, useEffect, ChangeEvent } from 'react'
++ import { auth } from '../lib/firebase'
++ import { onAuthStateChanged, signOut } from 'firebase/auth'
+ import LoginForm from './LoginForm'
+ import LoginModal from './LoginModal'
+ import { checkUserExists, createUserAndSendPassword } from '../lib/authUtils'
+@@ -60,6 +63,13 @@ export default function Form2290() {
+   const [formData, setFormData] = useState({ /* ... */ })
+
++  // Auth state & logout
++  const [user, setUser] = useState<any>(null)
 +  useEffect(() => {
-+    const unsubscribe = onAuthStateChanged(auth, u => setUser(u));
-+    return unsubscribe;
-+  }, []);
-+  const handleLogout = async () => {
-+    try {
-+      await signOut(auth);
-+    } catch (e) {
-+      console.error('Logout error', e);
-+    }
-+  };
-@@
-   return (
-     <div style={container}>
--      {/* Business Info etc... */}
-+      {/* — Auth & Logout UI — */}
++    const unsubscribe = onAuthStateChanged(auth, u => setUser(u))
++    return unsubscribe
++  }, [])
++  const handleLogout = async () => { try { await signOut(auth) } catch (e) { console.error('Logout error', e) } }
++
+   // UI states
+   const [showLogin, setShowLogin] = useState(false)
+   const [showLoginModal, setShowLoginModal] = useState(false)
+@@ -240,24 +250,33 @@ return (
+       <h1 style={header}>Website Under Development!</h1>
+       <p style={{ textAlign: 'center', marginTop: -8 }}>By Majd Consulting, PLLC</p>
+ 
+-      {/* 🔒 Login Toggle */}
+-      <div style={{ textAlign: 'center', marginBottom: 20 }}>
+-        <button
+-          onClick={() => setShowLogin(prev => !prev)}
+-          style={{ padding: '6px 12px', borderRadius: 4, backgroundColor: '#1565c0', color: '#fff', border: 'none' }}
+-        >
+-          {showLogin ? 'Hide Login' : 'Login or Create Account'}
+-        </button>
+-      </div>
+-
+-      {/* 🔒 Embedded Login Form */}
+-      {showLogin && (
+-        <div style={{ maxWidth: 420, margin: '0 auto', marginBottom: 30 }}>
+-          <LoginForm />
+-        </div>
+-      )}
+-
+-      {/* 🔒 Login Modal for existing users */}
+-      {showLoginModal && (
+-        <LoginModal email={pendingEmail} onClose={() => setShowLoginModal(false)} />
+-      )}
++      {/* Auth & Logout */}
 +      <div style={{ textAlign: 'right', marginBottom: 20 }}>
-+        {user
-+          ? (
-+            <>Logged in as <strong>{user.email}</strong> <button onClick={handleLogout} style={{ ...btnSmall, backgroundColor:'#d32f2f', color:'#fff' }}>Logout</button></>
-+          ) : (
-+            <span style={{ fontStyle:'italic' }}>Not signed in</span>
-+          )}
++        {user ? (
++          <>
++            Logged in as <strong>{user.email}</strong>{' '}
++            <button
++              onClick={handleLogout}
++              style={{ ...btnSmall, backgroundColor: '#d32f2f', color: '#fff' }}
++            >
++              Logout
++            </button>
++          </>
++        ) : (
++          <span style={{ fontStyle: 'italic' }}>Not signed in</span>
++        )}
 +      </div>
-+      {/* — Login Toggle for anonymous — */}
++
++      {/* Login Toggle */}
 +      {!user && (
-+        <div style={{ textAlign:'center', marginBottom:20 }}>
-+          <button onClick={() => setShowLogin(p => !p)} style={{ ...btnSmall, backgroundColor:'#1565c0', color:'#fff' }}>
++        <div style={{ textAlign: 'center', marginBottom: 20 }}>
++          <button
++            onClick={() => setShowLogin(p => !p)}
++            style={{ ...btnSmall, backgroundColor: '#1565c0', color: '#fff' }}
++          >
 +            {showLogin ? 'Hide Login' : 'Login or Create Account'}
 +          </button>
 +        </div>
 +      )}
-+      {showLogin && !user && (
-+        <div style={{ maxWidth:420, margin:'0 auto', marginBottom:30 }}>
-+          <LoginForm />
-+        </div>
-+      )}
++      {showLogin && !user && <LoginForm />}
 +      {showLoginModal && <LoginModal email={pendingEmail} onClose={() => setShowLoginModal(false)} />}
-*** End Patch
-```
-"use client";
-import React, { useState, useEffect, ChangeEvent } from 'react';
-import { auth } from '../lib/firebase';
-import { onAuthStateChanged, signOut } from 'firebase/auth';
-import LoginForm from './LoginForm';
-import LoginModal from './LoginModal';
-import { checkUserExists, createUserAndSendPassword } from '../lib/authUtils';
-
-export const weightCategories = [
-  { label: 'A (55,000 lbs)', value: 'A', tax: 100.0 },
-  { label: 'B (55,001 – 56,000 lbs)', value: 'B', tax: 122.0 },
-  { label: 'C (56,001 – 57,000 lbs)', value: 'C', tax: 144.0 },
-  { label: 'D (57,001 – 58,000 lbs)', value: 'D', tax: 166.0 },
-  { label: 'E (58,001 – 59,000 lbs)', value: 'E', tax: 188.0 },
-  { label: 'F (59,001 – 60,000 lbs)', value: 'F', tax: 210.0 },
-  { label: 'G (60,001 – 61,000 lbs)', value: 'G', tax: 232.0 },
-  { label: 'H (61,001 – 62,000 lbs)', value: 'H', tax: 254.0 },
-  { label: 'I (62,001 – 63,000 lbs)', value: 'I', tax: 276.0 },
-  { label: 'J (63,001 – 64,000 lbs)', value: 'J', tax: 298.0 },
-  { label: 'K (64,001 – 65,000 lbs)', value: 'K', tax: 320.0 },
-  { label: 'L (65,001 – 66,000 lbs)', value: 'L', tax: 342.0 },
-  { label: 'M (66,001 – 67,000 lbs)', value: 'M', tax: 364.0 },
-  { label: 'N (67,001 – 68,000 lbs)', value: 'N', tax: 386.0 },
-  { label: 'O (68,001 – 69,000 lbs)', value: 'O', tax: 408.0 },
-  { label: 'P (69,001 – 70,000 lbs)', value: 'P', tax: 430.0 },
-  { label: 'Q (70,001 – 71,000 lbs)', value: 'Q', tax: 452.0 },
-  { label: 'R (71,001 – 72,000 lbs)', value: 'R', tax: 474.0 },
-  { label: 'S (72,001 – 73,000 lbs)', value: 'S', tax: 496.0 },
-  { label: 'T (73,001 – 74,000 lbs)', value: 'T', tax: 518.0 },
-  { label: 'U (74,001 – 75,000 lbs)', value: 'U', tax: 540.0 },
-  { label: 'V (over 75,000 lbs)', value: 'V', tax: 550.0 },
-  { label: 'W (Suspended)', value: 'W', tax: 0.0 },
-];
-
-type Vehicle = {
-  vin: string;
-  category: string;
-  used_month: string;
-  is_logging: boolean;
-  is_suspended: boolean;
-  is_agricultural: boolean;
-  mileage_5000_or_less: boolean;
-};
-
-export default function Form2290() {
-  // Auth state & logout
-  const [user, setUser] = useState<any>(null);
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (u) => setUser(u));
-    return unsubscribe;
-  }, []);
-  const handleLogout = async () => {
-    try {
-      await signOut(auth);
-    } catch (e) {
-      console.error('Logout error', e);
-    }
-  };
-
-  // API base
-  const isBrowser = typeof window !== 'undefined';
-  const defaultApi = isBrowser
-    ? `${window.location.protocol}//${window.location.hostname}:5000`
-    : '';
-  const API_BASE = process.env.NEXT_PUBLIC_API_URL || defaultApi;
-
-  // Form state
-  const [formData, setFormData] = useState({
-    email: '',
-    business_name: '',
-    ein: '',
-    address: '',
-    city: '',
-    state: '',
-    zip: '',
-    tax_year: '2025',
-    used_on_july: '202507',
-    address_change: false,
-    amended_return: false,
-    vin_correction: false,
-    final_return: false,
-    include_preparer: false,
-    preparer_name: '',
-    preparer_ptin: '',
-    date_prepared: '',
-    preparer_firm_name: '',
-    preparer_firm_ein: '',
-    preparer_firm_address: '',
-    preparer_firm_citystatezip: '',
-    preparer_firm_phone: '',
-    consent_to_disclose: false,
-    designee_name: '',
-    designee_phone: '',
-    designee_pin: '',
-    vehicles: [
-      {
-        vin: '',
-        category: '',
-        used_month: '',
-        is_logging: false,
-        is_suspended: false,
-        is_agricultural: false,
-        mileage_5000_or_less: false,
-      },
-    ] as Vehicle[],
-    signature: '',
-    printed_name: '',
-    signature_date: '',
-    payEFTPS: false,
-    payCard: false,
-    eftps_routing: '',
-    eftps_account: '',
-    card_holder: '',
-    card_number: '',
-    card_exp: '',
-    card_cvv: '',
-  });
-
-  // UI states
-  const [showLogin, setShowLogin] = useState(false);
-  const [showLoginModal, setShowLoginModal] = useState(false);
-  const [pendingEmail, setPendingEmail] = useState('');
-
-  const [totalTax, setTotalTax] = useState(0);
-  const todayStr = new Date().toISOString().split('T')[0];
-
-  // Month options July→June
-  const months = Array.from({ length: 12 }).map((_, i) => {
-    const m = 6 + i;
-    return {
-      label: new Date(2025, m, 1).toLocaleString('default', { month: 'long', year: 'numeric' }),
-      value: `2025${String(m + 1).padStart(2, '0')}`,
-    };
-  });
-
-  // Logging rates
-  const loggingRates: Record<string, number> = {
-    A: 75,
-    B: 91.5,
-    C: 108,
-    D: 124.5,
-    E: 141,
-    F: 157.5,
-    G: 174,
-    H: 190.5,
-    I: 207,
-    J: 223.5,
-    K: 240,
-    L: 256.5,
-    M: 273,
-    N: 289.5,
-    O: 306,
-    P: 322.5,
-    Q: 339,
-    R: 355.5,
-    S: 372,
-    T: 388.5,
-    U: 405,
-    V: 412.5,
-    W: 0,
-  };
-
-  useEffect(() => {
-    let total = 0;
-    formData.vehicles.forEach((v) => {
-      const mon = parseInt(v.used_month.slice(-2), 10) || 0;
-      if (!mon || v.is_suspended || v.is_agricultural) return;
-      const catObj = weightCategories.find((w) => w.value === v.category);
-      if (!catObj) return;
-      const rate = v.is_logging ? loggingRates[v.category] : catObj.tax;
-      const monthsLeft = mon >= 7 ? 12 : 13 - mon;
-      total += Number(((rate * monthsLeft) / 12).toFixed(2));
-    });
-    setTotalTax(total);
-  }, [formData.vehicles]);
-
-  const handleChange = (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const t = e.target as HTMLInputElement;
-    const { name, type, value, checked } = t;
-
-    // Paid Preparer toggle
-    if (name === 'include_preparer') {
-      if (!checked) {
-        setFormData({
-          ...formData,
-          include_preparer: false,
-          preparer_name: '',
-          preparer_ptin: '',
-          date_prepared: '',
-          preparer_firm_name: '',
-          preparer_firm_ein: '',
-          preparer_firm_address: '',
-          preparer_firm_citystatezip: '',
-          preparer_firm_phone: '',
-        });
-      } else {
-        setFormData({ ...formData, include_preparer: true });
-      }
-      return;
-    }
-
-    // Consent to Disclose toggle
-    if (name === 'consent_to_disclose') {
-      if (!checked) {
-        setFormData({
-          ...formData,
-          consent_to_disclose: false,
-          designee_name: '',
-          designee_phone: '',
-          designee_pin: '',
-        });
-      } else {
-        setFormData({ ...formData, consent_to_disclose: true });
-      }
-      return;
-    }
-
-    // Vehicle fields
-    if (name.startsWith('vehicle_')) {
-      const [_, idxStr, ...fld] = name.split('_');
-      const idx = parseInt(idxStr, 10);
-      const field = fld.join('_') as keyof Vehicle;
-      const vehicles = [...formData.vehicles];
-      const vv = { ...vehicles[idx] } as Record<string, any>;
-      if (type === 'checkbox') {
-        vv[field] = checked as any;
-        if (field === 'is_agricultural' && checked) vv.is_suspended = false;
-        if (field === 'is_suspended' && checked) vv.is_agricultural = false;
-        vv.is_agricultural || vv.is_suspended
-          ? (vv.category = 'W')
-          : vv.category === 'W' && (vv.category = '');
-      } else {
-        vv[field] = value as any;
-      }
-      vehicles[idx] = vv as Vehicle;
-      setFormData({ ...formData, vehicles });
-      return;
-    }
-
-    // Payment exclusivity
-    if (name === 'payEFTPS') {
-      setFormData({ ...formData, payEFTPS: checked, payCard: false });
-      return;
-    }
-    if (name === 'payCard') {
-      setFormData({ ...formData, payCard: checked, payEFTPS: false });
-      return;
-    }
-
-    // Signature date guard
-    if (name === 'signature_date' && value < todayStr) {
-      alert('Signature date cannot be before today.');
-      return;
-    }
-
-    // Default update
-    setFormData({
-      ...formData,
-      [name]: type === 'checkbox' ? checked : value,
-    });
-  };
-
-  const addVehicle = () => {
-    setFormData({
-      ...formData,
-      vehicles: [
-        ...formData.vehicles,
-        {
-          vin: '',
-          category: '',
-          used_month: '',
-          is_logging: false,
-          is_suspended: false,
-          is_agricultural: false,
-          mileage_5000_or_less: false,
-        },
-      ],
-    });
-  };
-
-  const removeVehicle = (i: number) => {
-    setFormData({
-      ...formData,
-      vehicles: formData.vehicles.filter((_, j) => j !== i),
-    });
-  };
-
-  const validateBeforeSubmit = (): string | null => {
-    if (!formData.email.trim()) return 'Email is required';
-    if (!formData.business_name.trim()) return 'Business Name is required';
-    if (!/^\d{9}$/.test(formData.ein)) return 'EIN must be 9 digits';
-    if (formData.include_preparer) {
-      if (!formData.preparer_name.trim()) return 'Preparer Name is.required';
-      if (!formData.preparer_ptin.trim()) return 'Preparer PTIN is required';
-      if (!formData.preparer_firm_name.trim()) return 'Firm Name is required';
-      if (!/^\d{9}$/.test(formData.preparer_firm_ein)) return 'Firm EIN must be 9 digits';
-      if (!formData.preparer_firm_address.trim()) return 'Firm Address is required';
-      if (!formData.preparer_firm_citystatezip.trim()) return 'Firm City/State/ZIP is required';
-      if (!/^\d{10}$/.test(formData.preparer_firm_phone)) return 'Firm Phone must be 10 digits';
-    }
-    if (formData.consent_to_disclose) {
-      if (!formData.designee_name.trim()) return 'Designee Name is.required';
-      if (!/^\d{10}$/.test(formData.designee_phone)) return 'Designee Phone must be 10 digits';
-      if (!formData.designee_pin.trim()) return 'Designee PIN is required';
-    }
-    if (!formData.signature.trim()) return 'Signature is required';
-    if (!formData.printed_name.trim()) return 'Printed Name is required';
-    if (!formData.signature_date) return 'Signature Date is required';
-    if (!formData.payEFTPS && !formData.payCard) return 'Select EFTPS or Credit/Debit Card';
-    if (formData.payEFTPS && (!formData.eftps_routing.trim() || !formData.eftps_account.trim())) return 'EFTPS routing and account.required';
-    if (formData.payCard && (!formData.card_holder.trim() || !formData.card_number.trim() || !formData.card_exp.trim() || !formData.card_cvv.trim())) return 'All Credit/Debit fields.required';
-    return null;
-  };
-
-  const handleSubmit = async () => {
-    const err = validateBeforeSubmit();
-    if (err) { alert(err); return; }
-    if (!auth.currentUser) {
-      const exists = await checkUserExists(formData.email);
-      if (!exists) {
-        const created = await createUserAndSendPassword(formData.email);
-        if (created) alert('Account created! Check email.');
-      }
-    }
-    const groups = formData.vehicles.reduce<Record<string, Vehicle[]>>((acc, v) => {
-      if (v.used_month) {
-        acc[v.used_month] = acc[v.used_month] || [];
-        acc[v.used_month].push(v);
-      }
-      return acc;
-    }, {});
-    for (const month of Object.keys(groups)) {
-      const payload = { ...formData, used_on_july: month, vehicles: groups[month] };
-      try {
-        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-        const token = auth.currentUser ? await auth.currentUser.getIdToken() : null;
-        if (token) headers.Authorization = `Bearer ${token}`;
-        const res = await fetch(`${API_BASE}/build-xml`, { method: 'POST', headers, body: JSON.stringify(payload) });
-        if (!res.ok) { const e = await res.json().catch(() => null); alert(e?.error||res.statusText); continue; }
-        const { xml } = await res.json();
-        const blob = new Blob([xml], { type: 'application/xml' });
-        const link = URL.createObjectURL(blob);
-        const a = document.createElement('a'); a.href = link; a.download = `form2290_${month}.xml`; a.click(); URL.revokeObjectURL(link);
-      } catch (e: any) { alert(`Network error: ${e.message}`); }
-    }
-  };
-
-  const handleDownloadPDF = async () => {
-    try {
-      const token = await auth.currentUser!.getIdToken();
-      const res = await fetch(`${API_BASE}/download-pdf`, { headers: { Authorization: `Bearer ${token}` } });
-      const blob = await res.blob();
-      const link = URL.createObjectURL(blob);
-      const a = document.createElement('a'); a.href = link; a.download = 'form2290.pdf'; a.click(); URL.revokeObjectURL(link);
-    } catch { alert('PDF download failed'); }
-  };
-
-  // Styles
-  const container: React.CSSProperties = { maxWidth: 900, margin: '0 auto', padding: 20, fontFamily: 'Segoe UI, sans-serif' };
-  const header: React.CSSProperties = { textAlign: 'center', color: '#d32f2f' };
-  const labelSmall: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.9rem' };
-  const btnSmall: React.CSSProperties = { padding: '6px 12px', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: '0.9rem' };
-
-  return (
-    <div style={container}>
-      {/* Auth & Logout */}
-      <div style={{ textAlign: 'right', marginBottom: 20 }}>
-        {user ? (
-          <>
-            Logged in as <strong>{user.email}</strong>
-            <button onClick={handleLogout} style={{ ...btnSmall, backgroundColor: '#d32f2f', color: '#fff' }}>Logout</button>
-          </>
-        ) : (
-          <span style={{ fontStyle: 'italic' }}>Not signed in</span>
-        )}
-      </div>
-
-      {/* Login Toggle */}
-      {!user && (
-        <div style={{ textAlign: 'center', marginBottom: 20 }}>
-          <button onClick={() => setShowLogin((p) => !p)} style={{ ...btnSmall, backgroundColor: '#1565c0', color: '#fff' }}>
-            {showLogin ? 'Hide Login' : 'Login or Create Account'}
-          </button>
-        </div>
-      )}
-      {showLogin && !user && (
-        <div style={{ maxWidth: 420, margin: '0 auto', marginBottom: 30 }}>
-          <LoginForm />
-        </div>
-      )}
-      {showLoginModal && <LoginModal email={pendingEmail} onClose={() => setShowLoginModal(false)} />}
-
-      <h1 style={header}>Website Under Development!</h1>
-      <p style={{ textAlign:
+ 
+       {/* Business Info */}
+       {/* ...rest of your form as originally coded... */}

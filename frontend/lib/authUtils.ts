@@ -49,7 +49,7 @@ export async function createUserAndSendPassword(
     // b) send via EmailJS
     const templateParams = {
       to_email:            email,
-      password:  password,
+      temporary_password:  password,
       user_uid:            userCred.user.uid,
     }
 
