@@ -343,6 +343,15 @@ export default function Form2290() {
           } else {
             console.log("⚠️ [Signup] createUserAndSendPassword returned false")
           }
+          // Wait for Firebase to update the currentUser
+          await new Promise(resolve => {
+            const unsubscribe = onAuthStateChanged(auth, user => {
+              if (user) {
+                unsubscribe();
+                resolve(true);
+              }
+            });
+          });
         } catch (e: any) {
           if (e?.status === 404) {
             alert("Account created, but welcome email could not be sent. Please contact support.")
