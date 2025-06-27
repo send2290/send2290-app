@@ -273,9 +273,11 @@ def list_my_documents():
     finally:
         db.close()
 
-@app.route("/build-pdf", methods=["POST"])
+@app.route("/build-pdf", methods=["POST", "OPTIONS"])
 @verify_firebase_token
 def build_pdf():
+    if request.method == "OPTIONS":
+        return make_response(jsonify({}), 200)
     data = request.get_json() or {}
     if not data.get("business_name") or not data.get("ein"):
         return jsonify({"error": "Missing business_name or ein"}), 400
