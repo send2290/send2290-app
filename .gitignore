@@ -57,8 +57,14 @@ npm-debug.log*
 yarn-debug.log*
 pnpm-debug.log*
 
-# Environment files
-frontend/.env*
+# Environment files (UPDATED - MORE COMPREHENSIVE)
+frontend/.env
+frontend/.env.*
+frontend/.env.local
+frontend/.env.production
+frontend/.env.development.local
+frontend/.env.test.local
+frontend/.env.production.local
 
 # =========================
 # Elastic Beanstalk & AWS CLI
@@ -66,7 +72,7 @@ frontend/.env*
 
 .elasticbeanstalk/*
 !.elasticbeanstalk/*.cfg.yml
-!.elasticbeanalk/*.global.yml
+!.elasticbeanstalk/*.global.yml
 
 *.pem
 
@@ -84,13 +90,38 @@ Thumbs.db
 # Root dependencies
 node_modules/
 
-# Root env files
+# Root env files (UPDATED - MORE COMPREHENSIVE)
 .env
 .env.*
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 
-# Backend secrets
+# Backend secrets (UPDATED - MORE COMPREHENSIVE)
 backend/.env
+backend/.env.*
+backend/.env.local
+backend/.env.development.local
+backend/.env.test.local
+backend/.env.production.local
 backend/firebase-service-account.json
 
 # Any other JSON keyfiles
 **/firebase-service-account*.json
+
+# IDE and editor files
+**/.vscode/
+**/.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db

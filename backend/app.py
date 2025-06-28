@@ -159,8 +159,9 @@ def verify_admin_token(f):
         try:
             decoded_token = firebase_auth.verify_id_token(token)
             
-            # Check if user is admin - UPDATE THIS WITH YOUR ADMIN EMAIL
-            admin_emails = ['mmohsin@umich.edu', 'admin@send2290.com']  # Replace with your actual admin email
+            # Check if user is admin - GET FROM ENVIRONMENT VARIABLE
+            admin_email = os.getenv('ADMIN_EMAIL', 'admin@send2290.com')  # Use environment variable
+            admin_emails = [admin_email, 'admin@send2290.com']  # Fallback admin
             
             if decoded_token.get('email') not in admin_emails:
                 log_admin_action("UNAUTHORIZED_ACCESS_ATTEMPT", f"Non-admin user {decoded_token.get('email')} attempted admin access")
