@@ -4,7 +4,7 @@ import json
 import io
 import logging
 from functools import wraps
-from flask import Flask, request, jsonify, make_response, send_file
+from flask import Flask, request, jsonify, make_response, send_file, Response
 from flask_cors import CORS
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text, text
 from sqlalchemy.orm import sessionmaker, declarative_base
@@ -190,6 +190,8 @@ def generate_xml():
         return make_response(jsonify({}), 200)
 
     data = request.get_json() or {}
+    # data = store_user_email_in_submission(data, request.user)  # Store email in form data
+
     if not data.get("business_name") or not data.get("ein"):
         return jsonify({"error": "Missing business_name or ein"}), 400
 
@@ -345,6 +347,8 @@ def build_pdf():
         return make_response(jsonify({}), 200)
     
     data = request.get_json() or {}
+    # data = store_user_email_in_submission(data, request.user)  # Store email in form data
+
     if not data.get("business_name") or not data.get("ein"):
         return jsonify({"error": "Missing business_name or ein"}), 400
 
@@ -547,32 +551,56 @@ def debug_filings_documents():
 @verify_admin_token
 def admin_view_submissions():
     """
-    Secure endpoint to view all submissions with data masking for IRS compliance.
-    Only accessible by authenticated admin users.
+    Admin endpoint to view all submissions with user information.
+    IRS compliance: Only authorized personnel can access taxpayer data.
     """
-    log_admin_action("VIEW_SUBMISSIONS", "Admin viewed all submissions")
-    
-    db = SessionLocal()
     try:
-        submissions = db.query(Submission).order_by(Submission.created_at.desc()).all()
-        return jsonify({
-            "count": len(submissions),
-            "submissions": [
-                {
-                    "id": s.id,
-                    "user_uid": s.user_uid,
-                    "month": s.month,
-                    "created_at": str(s.created_at),
-                    "xml_s3_key": s.xml_s3_key,
-                    "pdf_s3_key": s.pdf_s3_key,
-                    # Parse form_data to show business info (masked for security)
-                    **_mask_sensitive_data(json.loads(s.form_data) if s.form_data else {})
-                }
-                for s in submissions
-            ]
-        })
-    finally:
-        db.close()
+        db = SessionLocal()
+        try:
+            # Simple query that was working before
+            submissions = db.query(Submission).order_by(Submission.created_at.desc()).all()
+            
+            submissions_list = []
+            for submission in submissions:
+                # Parse form_data to extract business details
+                try:
+                    form_data = json.loads(submission.form_data) if submission.form_data else {}
+                except:
+                    form_data = {}
+                
+                # Calculate totals from vehicles
+                vehicles = form_data.get('vehicles', [])
+                total_vehicles = len(vehicles)
+                total_tax = sum(float(v.get('tax_amount', 0)) for v in vehicles)
+                
+                # Simple user display - no email lookup for now
+                user_display = f"User: {submission.user_uid[:8]}..." if submission.user_uid else "Unknown"
+                
+                submissions_list.append({
+                    'id': submission.id,
+                    'business_name': form_data.get('business_name', 'Unknown Business'),
+                    'ein': form_data.get('ein', 'Unknown'),
+                    'created_at': submission.created_at.isoformat() if submission.created_at else None,
+                    'month': submission.month or 'Unknown',
+                    'user_uid': submission.user_uid,
+                    'user_email': user_display,  # Show partial UID for now
+                    'total_vehicles': total_vehicles,
+                    'total_tax': total_tax
+                })
+            
+            log_admin_action("VIEW_ALL_SUBMISSIONS", f"Retrieved {len(submissions_list)} submissions")
+            
+            return jsonify({
+                'submissions': submissions_list,
+                'total': len(submissions_list)
+            })
+            
+        finally:
+            db.close()
+            
+    except Exception as e:
+        log_admin_action("VIEW_ALL_SUBMISSIONS_ERROR", f"Error: {str(e)}")
+        return jsonify({'error': f'Failed to retrieve submissions: {str(e)}'}), 500
 
 @app.route("/admin/submissions/<int:submission_id>", methods=["DELETE"])
 @verify_admin_token
@@ -857,26 +885,78 @@ def debug_s3_test():
             "error": str(e)
         }), 500
 
-def _mask_sensitive_data(form_data):
+@app.route("/user/documents", methods=["GET"])
+@verify_firebase_token
+def user_documents():
     """
-    Mask sensitive taxpayer data for IRS compliance.
-    Only show partial information to authorized admin users.
+    Endpoint for users to view their submitted documents.
+    Returns a list of documents with metadata and download links.
     """
-    masked_data = {}
-    
-    if 'business_name' in form_data:
-        name = form_data['business_name']
-        masked_data['business_name'] = name[:10] + "..." if len(name) > 10 else name
-    
-    if 'ein' in form_data:
-        ein = form_data['ein']
-        masked_data['ein'] = f"XX-XXXXXXX{ein[-2:]}" if len(ein) >= 2 else "XX-XXXXXXX##"
-    
-    if 'address' in form_data:
-        addr = form_data['address']
-        masked_data['address'] = addr[:15] + "..." if len(addr) > 15 else addr
-    
-    return masked_data
+    user_uid = request.user['uid']
+    db = SessionLocal()
+    try:
+        # Query to fetch user's submissions and associated documents
+        rows = db.execute(
+            text("""
+                SELECT s.id, s.month, s.created_at, d.document_type, d.s3_key
+                  FROM submissions s
+                  JOIN filings_documents d ON s.id = d.filing_id
+                 WHERE s.user_uid = :uid
+                 ORDER BY s.created_at DESC
+            """),
+            {"uid": user_uid}
+        ).fetchall()
+
+        submissions = {}
+        for row in rows:
+            submission_id, month, created_at, doc_type, s3_key = row
+            url = s3.generate_presigned_url(
+                'get_object',
+                Params={
+                    'Bucket': BUCKET,
+                    'Key': s3_key
+                },
+                ExpiresIn=900
+            )
+            
+            if submission_id not in submissions:
+                submissions[submission_id] = {
+                    "id": submission_id,
+                    "month": month,
+                    "created_at": str(created_at),
+                    "documents": []
+                }
+            
+            submissions[submission_id]["documents"].append({
+                "type": doc_type,
+                "url": url
+            })
+
+        return jsonify({
+            "count": len(submissions),
+            "submissions": list(submissions.values())
+        })
+    finally:
+        db.close()
 
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    print("🔥 Starting Flask development server...")
+    print(f"🔧 Flask ENV: {os.getenv('FLASK_ENV', 'development')}")
+    print(f"🗄️  Database: {DATABASE_URL[:50]}...")
+    
+    # Test database connection
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(text("SELECT 1"))
+            print("✅ Database connection successful")
+    except Exception as e:
+        print(f"❌ Database connection failed: {e}")
+        print("💡 Check AWS RDS security group settings")
+        
+    print(f"🪣 S3 Bucket: {BUCKET}")
+    print(f"👨‍💼 Admin Email: {os.getenv('ADMIN_EMAIL')}")
+    
+    try:
+        app.run(host="0.0.0.0", port=5000, debug=True)
+    except Exception as e:
+        print(f"❌ Failed to start server: {e}")

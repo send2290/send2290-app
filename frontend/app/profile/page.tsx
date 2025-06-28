@@ -13,8 +13,11 @@ type Document = {
 
 export default function ProfilePage() {
   const [user, setUser] = useState<User | null>(null);
-  const [docs, setDocs]   = useState<Document[]>([]);
+  const [docs, setDocs] = useState<Document[]>([]);
   const [loading, setLoading] = useState(false);
+
+  // Move API_BASE outside of useEffect so it's available in JSX
+  const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
   // 1) Track auth state
   useEffect(() => {
@@ -27,19 +30,39 @@ export default function ProfilePage() {
 
   // 2) When user logs in, fetch their docs
   useEffect(() => {
-    if (!user) return;
-    setLoading(true);
-    user.getIdToken().then((token) => {
-      fetch("http://localhost:5000/api/my-documents", {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-        .then((res) => res.json())
-        .then((data) => {
-          setDocs(data.documents || []);
+    if (user) {
+      setLoading(true);
+      user.getIdToken().then((token) => {
+        fetch(`${API_BASE}/user/documents`, {
+          headers: { Authorization: `Bearer ${token}` },
         })
-        .finally(() => setLoading(false));
-    });
-  }, [user]);
+          .then((res) => res.json())
+          .then((data) => {
+            // Your backend returns submissions with nested documents
+            // Flatten this to match your frontend expectation
+            const allDocs: Document[] = [];
+            if (data.submissions) {
+              data.submissions.forEach((submission: any) => {
+                submission.documents.forEach((doc: any) => {
+                  allDocs.push({
+                    filing_id: submission.id.toString(),
+                    type: doc.type,
+                    uploaded_at: submission.created_at,
+                    url: doc.url
+                  });
+                });
+              });
+            }
+            setDocs(allDocs);
+            setLoading(false);
+          })
+          .catch((error) => {
+            console.error("Error fetching documents:", error);
+            setLoading(false);
+          });
+      });
+    }
+  }, [user, API_BASE]);
 
   if (!user) {
     return <p className="p-4">Please log in to view your filings.</p>;
@@ -73,9 +96,10 @@ export default function ProfilePage() {
                 <td className="p-2 uppercase">{doc.type}</td>
                 <td className="p-2">
                   <a
-                    href={doc.url}
+                    href={doc.url}  // Remove API_BASE since backend returns full presigned URLs
                     target="_blank"
                     rel="noopener noreferrer"
+                    className="text-blue-600 hover:underline"
                   >
                     Download
                   </a>

@@ -50,6 +50,7 @@ interface AdminSubmission {
   created_at: string;
   month: string;
   user_uid: string;
+  user_email: string;  // Add this line
   total_vehicles: number;
   total_tax: number;
 }
@@ -598,6 +599,7 @@ export default function Form2290() {
                   <thead style={{ background: '#e9ecef', position: 'sticky', top: 0 }}>
                     <tr>
                       <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid #ddd' }}>ID</th>
+                      <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid #ddd' }}>User Email</th>
                       <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid #ddd' }}>Business</th>
                       <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid #ddd' }}>EIN</th>
                       <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid #ddd' }}>Month</th>
@@ -611,6 +613,7 @@ export default function Form2290() {
                     {submissions.map((submission) => (
                       <tr key={submission.id} style={{ borderBottom: '1px solid #eee' }}>
                         <td style={{ padding: '8px' }}>{submission.id}</td>
+                        <td style={{ padding: '8px' }}>{submission.user_email || 'Unknown'}</td>
                         <td style={{ padding: '8px' }}>{submission.business_name.substring(0, 20)}...</td>
                         <td style={{ padding: '8px' }}>***{submission.ein.slice(-4)}</td>
                         <td style={{ padding: '8px' }}>{formatMonth(submission.month)}</td>
