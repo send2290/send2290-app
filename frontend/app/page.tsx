@@ -362,87 +362,17 @@ export default function Form2290() {
           } else {
             alert("Error creating account: " + (e?.message || JSON.stringify(e)))
           }
-          // Do not return; continue to XML generation
+          // Do not return; continue to submission
         }
       } else {
         console.log("👤 [Signup] User already exists – skipping creation")
       }
     }
 
-    // 4) now signed in → proceed to build XML
-    const groups = formData.vehicles.reduce<Record<string, Vehicle[]>>((acc, v) => {
-      if (!v.used_month) return acc
-      if (!acc[v.used_month]) acc[v.used_month] = []
-      acc[v.used_month].push(v)
-      return acc
-    }, {})
-    const months = Object.keys(groups)
-    if (months.length === 0) {
-      alert("Please select a month of first use for at least one vehicle.")
-      return
-    }
-
-    for (const month of months) {
-      const payload = {
-        ...formData,
-        used_on_july: month,
-        vehicles:     groups[month],
-      }
-
-      try {
-        // build & download XML
-        const headers: Record<string,string> = {
-          'Content-Type': 'application/json',
-        }
-        if (auth.currentUser) {
-          const token = await auth.currentUser.getIdToken()
-          headers.Authorization = `Bearer ${token}`
-        }
-
-        const buildRes = await fetch(`${API_BASE}/build-xml`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify(payload),
-        })
-        if (!buildRes.ok) {
-        // try to pull a JSON error, otherwise fall back to statusText
-        let errMsg = buildRes.statusText
-        try {
-          const errJson = await buildRes.json()
-          errMsg = errJson.error || errMsg
-        } catch {
-          // non-JSON body; leave errMsg as statusText
-        }
-        alert(`Error building XML for ${month}: ${errMsg}`)
-        continue
-      }
-
-      let xmlString: string
-      try {
-        // now parse the success response
-        const data = await buildRes.json()
-        xmlString = data.xml
-      } catch (e: any) {
-        alert(`Invalid server response for ${month}: ${e.message}`)
-        continue
-      }
-        const xmlBlob = new Blob([xmlString], { type: 'application/xml' })
-        const url     = URL.createObjectURL(xmlBlob)
-        const a       = document.createElement('a')
-        a.href        = url
-        a.download    = `form2290_${month}.xml`
-        a.click()
-        URL.revokeObjectURL(url)
-      } catch (e: any) {
-        alert(`Network error for ${month}: ${e.message}`)
-      }
-    }
-  }
-
-  const handleBuildAndDownloadPDF = async () => {
+    // 4) Submit and download PDF (which also generates XML)
     try {
       const token = await auth.currentUser!.getIdToken();
-      const pdfRes = await fetch(`${API_BASE}/build-pdf`, {
+      const response = await fetch(`${API_BASE}/build-pdf`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -451,22 +381,32 @@ export default function Form2290() {
         body: JSON.stringify(formData),
       });
 
-      if (!pdfRes.ok) {
-        alert("PDF generation failed");
+      if (!response.ok) {
+        let errorMsg = response.statusText;
+        try {
+          const errorData = await response.json();
+          errorMsg = errorData.error || errorMsg;
+        } catch {
+          // Non-JSON response, use statusText
+        }
+        alert(`Submission failed: ${errorMsg}`);
         return;
       }
 
-      const blob = await pdfRes.blob();
+      // Download the PDF
+      const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
       a.download = "form2290.pdf";
       a.click();
       URL.revokeObjectURL(url);
-    } catch {
-      alert("PDF download failed");
+
+      alert("✅ Form submitted successfully! XML and PDF generated.");
+    } catch (error: any) {
+      alert(`Network error: ${error.message}`);
     }
-  };
+  }
 
   // Styles
   const container: React.CSSProperties  = {
@@ -771,21 +711,12 @@ export default function Form2290() {
 
       {/* Actions */}
       <div style={{ marginTop: 20, display: 'flex', gap: 12 }}>
-        {/* REMOVE the Generate XML button */}
-        {/* <button
-          type="button"
-          style={{ ...btnSmall, backgroundColor: '#002855', color: '#fff' }}
-          onClick={handleSubmit}
-        >
-          Generate XML
-        </button> */}
-        {/* CHANGE Download PDF to SUBMIT */}
         <button
           type="button"
-          style={{ ...btnSmall, backgroundColor: '#28a745', color: '#fff' }}
-          onClick={handleBuildAndDownloadPDF}
+          style={{ ...btnSmall, backgroundColor: '#28a745', color: '#fff', fontSize: '1.1rem', padding: '12px 24px' }}
+          onClick={handleSubmit}
         >
-          SUBMIT
+          🚀 SUBMIT FORM 2290
         </button>
       </div>
     </div>

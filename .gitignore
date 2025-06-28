@@ -3,20 +3,20 @@
 # =========================
 
 # Virtual environments
-/backend/venv/
-/backend/.venv/
-/backend/ebcli-venv/
-/ebcli-venv/
-/venv/
+backend/venv/
+backend/.venv/
+backend/ebcli-venv/
+ebcli-venv/
+venv/
 
 # Bytecode / caches
 **/*.pyc
 __pycache__/
 
 # Output folders & generated files
-/backend/output/
-/backend/*.xml
-/backend/form2290.xml
+backend/output/
+backend/*.xml
+backend/form2290.xml
 
 # Flask instance files, if any
 instance/
@@ -24,17 +24,33 @@ instance/
 # IDE/editor folders
 .vscode/
 
+# Admin test scripts (contain sensitive tokens)
+backend/test_view.py
+backend/test_delete.py
+backend/test_admin.py
+
+# Database files
+backend/local.db
+backend/send2290.db
+backend/*.db
+
+# Audit logs (contain sensitive admin actions)
+backend/audit.log
+
 # =========================
 # Next.js frontend
 # =========================
 
 # Dependencies
-/frontend/node_modules/
+frontend/node_modules/
 
 # Build outputs
-/frontend/.next/
-/frontend/out/
-/frontend/.vercel/
+frontend/.next/
+frontend/out/
+frontend/.vercel/
+
+# Vercel deployment files
+.vercel/
 
 # Logs
 npm-debug.log*
@@ -42,7 +58,7 @@ yarn-debug.log*
 pnpm-debug.log*
 
 # Environment files
-/frontend/.env*
+frontend/.env*
 
 # =========================
 # Elastic Beanstalk & AWS CLI
@@ -60,4 +76,21 @@ pnpm-debug.log*
 
 .DS_Store
 Thumbs.db
-.vercel
+
+# =========================
+# Additional ignores
+# =========================
+
+# Root dependencies
+node_modules/
+
+# Root env files
+.env
+.env.*
+
+# Backend secrets
+backend/.env
+backend/firebase-service-account.json
+
+# Any other JSON keyfiles
+**/firebase-service-account*.json
