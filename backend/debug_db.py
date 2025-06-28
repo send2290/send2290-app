@@ -10,6 +10,7 @@ import psycopg2
 from sqlalchemy import create_engine, text, inspect
 from sqlalchemy.orm import sessionmaker
 import datetime
+from flask import request
 
 # Add current directory to path to import app modules
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -242,6 +243,50 @@ def create_missing_tables(engine):
         print(f"❌ Failed to create tables: {str(e)}")
         return False
 
+def list_my_documents():
+    # ...existing list_my_documents code...
+    pass
+
+@app.route('/api/my-documents', methods=['GET'])
+@verify_firebase_token
+def list_my_documents():
+    # ...existing list_my_documents code...
+    pass
+
+@app.route('/debug-ip')
+def debug_ip():
+    """Debug endpoint to see Render's actual IP address"""
+    import socket
+    
+    # Get the IP address Render is connecting from
+    request_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+    
+    # Get server's public IP
+    try:
+        hostname = socket.gethostname()
+        local_ip = socket.gethostbyname(hostname)
+    except:
+        local_ip = "Unknown"
+    
+    return {
+        "request_ip": request_ip,
+        "server_hostname": hostname,
+        "server_local_ip": local_ip,
+        "render_headers": {
+            "X-Forwarded-For": request.headers.get('X-Forwarded-For'),
+            "X-Real-IP": request.headers.get('X-Real-IP'),
+            "X-Forwarded-Proto": request.headers.get('X-Forwarded-Proto'),
+            "Host": request.headers.get('Host'),
+            "User-Agent": request.headers.get('User-Agent')
+        }
+    }
+
+@app.route("/build-pdf", methods=["POST", "OPTIONS"])
+@verify_firebase_token
+def build_pdf():
+    # ...existing build_pdf code...
+    pass
+
 def main():
     """Main verification function"""
     print("Starting AWS RDS database verification...\n")
@@ -292,74 +337,3 @@ def main():
 if __name__ == "__main__":
     success = main()
     sys.exit(0 if success else 1)
-
-@app.route('/api/my-documents', methods=['GET'])
-@verify_firebase_token
-def list_my_documents():
-    user_uid = request.user['uid']
-    db = SessionLocal()
-    try:
-        rows = db.execute(
-            text("""
-                SELECT filing_id, document_type, s3_key, uploaded_at
-                  FROM filings_documents
-                 WHERE user_uid = :uid
-                 ORDER BY uploaded_at DESC
-            """),
-            {"uid": user_uid}
-        ).fetchall()
-
-        documents = []
-        for row in rows:
-            filing_id, doc_type, s3_key, uploaded_at = row
-            url = s3.generate_presigned_url(
-                'get_object',
-                Params={
-                    'Bucket': BUCKET,
-                    'Key': s3_key
-                },
-                ExpiresIn=900
-            )
-            documents.append({
-                "filing_id": str(filing_id),
-                "type": doc_type,
-                "uploaded_at": str(uploaded_at) if uploaded_at else None,
-                "url": url
-            })
-
-        return jsonify({"documents": documents})
-    finally:
-        db.close()
-
-@app.route('/debug-ip')
-def debug_ip():
-    """Debug endpoint to see Render's actual IP address"""
-    import socket
-    
-    # Get the IP address Render is connecting from
-    request_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
-    
-    # Get server's public IP
-    try:
-        hostname = socket.gethostname()
-        local_ip = socket.gethostbyname(hostname)
-    except:
-        local_ip = "Unknown"
-    
-    return {
-        "request_ip": request_ip,
-        "server_hostname": hostname,
-        "server_local_ip": local_ip,
-        "render_headers": {
-            "X-Forwarded-For": request.headers.get('X-Forwarded-For'),
-            "X-Real-IP": request.headers.get('X-Real-IP'),
-            "X-Forwarded-Proto": request.headers.get('X-Forwarded-Proto'),
-            "Host": request.headers.get('Host'),
-            "User-Agent": request.headers.get('User-Agent')
-        }
-    }
-
-@app.route("/build-pdf", methods=["POST", "OPTIONS"])
-@verify_firebase_token
-def build_pdf():
-    # ...existing build_pdf code...
