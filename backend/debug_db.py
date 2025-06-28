@@ -243,6 +243,7 @@ def create_missing_tables(engine):
         print(f"❌ Failed to create tables: {str(e)}")
         return False
 
+@app.route('/debug-ip')
 def debug_ip():
     """Debug endpoint to see Render's actual IP address"""
     import socket
