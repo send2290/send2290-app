@@ -1,8 +1,7 @@
 "use client";
 import { useState, useEffect, ChangeEvent } from 'react'
 import { auth } from '../lib/firebase'
-import { onAuthStateChanged, signOut } from 'firebase/auth'
-import LoginForm from './LoginForm'
+import { onAuthStateChanged } from 'firebase/auth'
 import LoginModal from './LoginModal'
 import { checkUserExists, createUserAndSendPassword } from '../lib/authUtils'
 import { DateTime } from "luxon";
@@ -67,29 +66,6 @@ export default function Form2290() {
   // Always get today's date in America/New_York (Eastern) as YYYY-MM-DD
   const easternToday = DateTime.now().setZone("America/New_York").toISODate();
 
-  // --- Auth state & logout ---
-  const [user, setUser] = useState<any>(null)
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, u => {
-      setUser(u)
-      // Auto-populate email when user logs in
-      if (u && u.email) {
-        setFormData(prev => ({
-          ...prev,
-          email: u.email
-        }))
-      }
-    })
-    return unsubscribe
-  }, [])
-  const handleLogout = async () => {
-    try {
-      await signOut(auth)
-    } catch (e) {
-      alert('Logout failed')
-    }
-  }
-
   // Determine API base URL
   const isBrowser = typeof window !== 'undefined'
   const defaultApi = isBrowser
@@ -153,6 +129,19 @@ export default function Form2290() {
   const [showLogin, setShowLogin]           = useState(false)
   const [showLoginModal, setShowLoginModal] = useState(false)
   const [pendingEmail, setPendingEmail]     = useState('')
+
+  // Auto-populate email when user logs in
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user && user.email) {
+        setFormData(prev => ({
+          ...prev,
+          email: user.email
+        }))
+      }
+    })
+    return unsubscribe
+  }, [])
 
   const [totalTax, setTotalTax] = useState(0)
   const todayStr = new Date().toISOString().split('T')[0]
@@ -620,49 +609,20 @@ export default function Form2290() {
                         <td style={{ padding: '8px' }}>{submission.total_vehicles}</td>
                         <td style={{ padding: '8px' }}>${submission.total_tax}</td>
                         <td style={{ padding: '8px' }}>{formatDate(submission.created_at)}</td>
-                        <td style={{ padding: '8px' }}>
-                          <div style={{ display: 'flex', gap: '4px' }}>
-                            <button
-                              onClick={() => fetchSubmissionFiles(submission.id)}
-                              style={{
-                                padding: '4px 8px',
-                                fontSize: '0.75rem',
-                                backgroundColor: '#007bff',
-                                color: 'white',
-                                border: 'none',
-                                borderRadius: '2px',
-                                cursor: 'pointer'
-                              }}
-                            >
-                              📄 Files
-                            </button>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                          <div className="flex space-x-2">
                             <button
                               onClick={() => downloadFile(submission.id, 'pdf')}
-                              style={{
-                                padding: '4px 8px',
-                                fontSize: '0.75rem',
-                                backgroundColor: '#dc3545',
-                                color: 'white',
-                                border: 'none',
-                                borderRadius: '2px',
-                                cursor: 'pointer'
-                              }}
+                              className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
                             >
-                              📥 PDF
+                              📄 PDF
                             </button>
+                            
                             <button
                               onClick={() => downloadFile(submission.id, 'xml')}
-                              style={{
-                                padding: '4px 8px',
-                                fontSize: '0.75rem',
-                                backgroundColor: '#6c757d',
-                                color: 'white',
-                                border: 'none',
-                                borderRadius: '2px',
-                                cursor: 'pointer'
-                              }}
+                              className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-gray-600 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
                             >
-                              📥 XML
+                              📋 XML
                             </button>
                           </div>
                         </td>
@@ -787,44 +747,6 @@ export default function Form2290() {
 
   return (
     <div style={container}>
-      {/* --- Website Banner --- */}
-      
-      {/* --- Auth Status & Login/Logout --- */}
-      <div style={{ textAlign: 'right', marginBottom: 20 }}>
-        {user ? (
-          <>
-            Logged in as <strong>{user.email}</strong>{' '}
-            <button
-              onClick={handleLogout}
-              style={{ ...btnSmall, backgroundColor: '#d32f2f', color: '#fff' }}
-            >
-              Logout
-            </button>
-          </>
-        ) : (
-          <span style={{ fontStyle: 'italic' }}>Not signed in</span>
-        )}
-      </div>
-
-      {/* --- Login Toggle --- */}
-      {!user && (
-        <div style={{ textAlign: 'center', marginBottom: 20 }}>
-          <button
-            onClick={() => setShowLogin(prev => !prev)}
-            style={{ padding: '6px 12px', borderRadius: 4, backgroundColor: '#1565c0', color: '#fff', border: 'none' }}
-          >
-            {showLogin ? 'Hide Login' : 'Login or Create Account'}
-          </button>
-        </div>
-      )}
-
-      {/* --- Embedded Login Form --- */}
-      {showLogin && !user && (
-        <div style={{ maxWidth: 420, margin: '0 auto', marginBottom: 30 }}>
-          <LoginForm />
-        </div>
-      )}
-
       {/* --- Login Modal for existing users --- */}
       {showLoginModal && (
         <LoginModal email={pendingEmail} onClose={() => setShowLoginModal(false)} />
@@ -841,14 +763,14 @@ export default function Form2290() {
             value={formData.email}
             onChange={handleChange}
             required
-            disabled={!!user}
+            disabled={!!auth.currentUser}
             style={{
-              backgroundColor: user ? '#f5f5f5' : 'white',
-              color: user ? '#666' : 'black',
-              cursor: user ? 'not-allowed' : 'text'
+              backgroundColor: auth.currentUser ? '#f5f5f5' : 'white',
+              color: auth.currentUser ? '#666' : 'black',
+              cursor: auth.currentUser ? 'not-allowed' : 'text'
             }}
           />
-          {user && (
+          {auth.currentUser && (
             <span style={{ 
               fontSize: '0.8rem', 
               color: '#666', 
@@ -1090,7 +1012,7 @@ export default function Form2290() {
       </div>
 
       {/* --- Admin Section (add this after the logout button) --- */}
-      {user?.email === process.env.NEXT_PUBLIC_ADMIN_EMAIL && (
+      {auth.currentUser?.email === process.env.NEXT_PUBLIC_ADMIN_EMAIL && (
         <AdminSubmissions />
       )}
     </div>

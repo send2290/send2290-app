@@ -709,60 +709,6 @@ def admin_bulk_delete():
     finally:
         db.close()
 
-@app.route("/admin/submissions/<int:submission_id>/files", methods=["GET"])
-@verify_admin_token
-def admin_view_submission_files(submission_id):
-    """
-    Secure endpoint to view PDF/XML files for a specific submission.
-    Returns download links for the files with proper audit logging.
-    """
-    log_admin_action("VIEW_SUBMISSION_FILES", f"Viewed files for submission ID: {submission_id}")
-    
-    db = SessionLocal()
-    try:
-        submission = db.query(Submission).get(submission_id)
-        if not submission:
-            return jsonify({"error": "Submission not found"}), 404
-        
-        files = []
-        
-        # Add PDF file if exists
-        if submission.pdf_s3_key:
-            files.append({
-                "type": "PDF",
-                "filename": submission.pdf_s3_key.split('/')[-1],
-                "download_url": f"/admin/submissions/{submission_id}/download/pdf",
-                "s3_key": submission.pdf_s3_key
-            })
-        
-        # Add XML file if exists
-        if submission.xml_s3_key:
-            files.append({
-                "type": "XML",
-                "filename": submission.xml_s3_key.split('/')[-1],
-                "download_url": f"/admin/submissions/{submission_id}/download/xml",
-                "s3_key": submission.xml_s3_key
-            })
-        
-        # Add any additional documents
-        docs = db.query(FilingsDocument).filter(FilingsDocument.filing_id == submission_id).all()
-        for doc in docs:
-            files.append({
-                "type": doc.document_type.upper(),
-                "filename": doc.s3_key.split('/')[-1] if doc.s3_key else "unknown",
-                "download_url": f"/admin/documents/{doc.id}/download",
-                "s3_key": doc.s3_key
-            })
-        
-        return jsonify({
-            "submission_id": submission_id,
-            "files": files,
-            "total_files": len(files)
-        })
-    
-    finally:
-        db.close()
-
 @app.route("/admin/submissions/<int:submission_id>/download/<file_type>", methods=["GET"])
 @verify_admin_token
 def admin_download_file(submission_id, file_type):
