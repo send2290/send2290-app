@@ -24,6 +24,11 @@ instance/
 # IDE/editor folders
 .vscode/
 
+# Admin test scripts (contain sensitive tokens)
+/backend/test_view.py
+/backend/test_delete.py
+/backend/test_admin.py
+
 # =========================
 # Next.js frontend
 # =========================
