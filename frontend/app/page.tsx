@@ -50,7 +50,16 @@ export default function Form2290() {
   // --- Auth state & logout ---
   const [user, setUser] = useState<any>(null)
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, u => setUser(u))
+    const unsubscribe = onAuthStateChanged(auth, u => {
+      setUser(u)
+      // Auto-populate email when user logs in
+      if (u && u.email) {
+        setFormData(prev => ({
+          ...prev,
+          email: u.email
+        }))
+      }
+    })
     return unsubscribe
   }, [])
   const handleLogout = async () => {
@@ -480,16 +489,33 @@ export default function Form2290() {
 
       {/* Business Info (now includes Email at the start) */}
       <h2>Business Info</h2>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        {/* ← NEW EMAIL FIELD */}
-        <input
-          name="email"
-          type="email"
-          placeholder="Email"
-          value={formData.email}
-          onChange={handleChange}
-          required
-        />
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ position: 'relative' }}>
+          <input
+            name="email"
+            type="email"
+            placeholder="Email"
+            value={formData.email}
+            onChange={handleChange}
+            required
+            disabled={!!user}
+            style={{
+              backgroundColor: user ? '#f5f5f5' : 'white',
+              color: user ? '#666' : 'black',
+              cursor: user ? 'not-allowed' : 'text'
+            }}
+          />
+          {user && (
+            <span style={{ 
+              fontSize: '0.8rem', 
+              color: '#666', 
+              fontStyle: 'italic',
+              marginLeft: '4px'
+            }}>
+              (from account)
+            </span>
+          )}
+        </div>
         <input name="business_name" placeholder="Name" value={formData.business_name} onChange={handleChange} />
         <input
           name="ein"
