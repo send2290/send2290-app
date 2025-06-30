@@ -63,15 +63,17 @@ interface AdminSubmissionFile {
 }
 
 export default function Form2290() {
-  // Always get today's date in America/New_York (Eastern) as YYYY-MM-DD
-  const easternToday = DateTime.now().setZone("America/New_York").toISODate();
-
-  // Determine API base URL
+  // Debug the API base URL
   const isBrowser = typeof window !== 'undefined'
   const defaultApi = isBrowser
     ? `${window.location.protocol}//${window.location.hostname}:5000`
     : ''
   const API_BASE = process.env.NEXT_PUBLIC_API_URL || defaultApi
+  
+  console.log("🔗 API_BASE:", API_BASE); // Add this debug line
+
+  // Always get today's date in America/New_York (Eastern) as YYYY-MM-DD
+  const easternToday = DateTime.now().setZone("America/New_York").toISODate();
 
   // Form state (added `email`)
   const [formData, setFormData] = useState({
@@ -146,12 +148,15 @@ export default function Form2290() {
   const [totalTax, setTotalTax] = useState(0)
   const todayStr = new Date().toISOString().split('T')[0]
 
-  // Month options July→June
+  // Month options July 2025 → June 2026 (12 months)
   const months = Array.from({ length: 12 }).map((_, i) => {
-    const m = 6 + i
+    const monthIndex = (6 + i) % 12  // 6,7,8,9,10,11,0,1,2,3,4,5
+    const year = monthIndex < 6 ? 2026 : 2025  // Jan-Jun = 2026, Jul-Dec = 2025
+    const monthNumber = monthIndex + 1  // Convert to 1-based month
+    
     return {
-      label: new Date(2025, m, 1).toLocaleString('default', { month: 'long', year: 'numeric' }),
-      value: `2025${String(m + 1).padStart(2, '0')}`,
+      label: new Date(year, monthIndex, 1).toLocaleString('default', { month: 'long', year: 'numeric' }),
+      value: `${year}${String(monthNumber).padStart(2, '0')}`,
     }
   })
 
@@ -329,6 +334,12 @@ export default function Form2290() {
         return 'All credit/debit card fields are required'
       }
     }
+    for (let idx = 0; idx < formData.vehicles.length; idx++) {
+      const v = formData.vehicles[idx];
+      if (!v.vin.trim()) return `VIN is required for vehicle #${idx + 1}`;
+      if (!v.used_month) return `Month is required for vehicle #${idx + 1}`;
+      if (!v.category) return `Weight is required for vehicle #${idx + 1}`;
+    }
     return null
   }
 
@@ -389,7 +400,13 @@ export default function Form2290() {
 
     // 4) Submit and download PDF (which also generates XML)
     try {
+      console.log("🚗 Form data being sent:", JSON.stringify(formData, null, 2)); // Debug line
+      console.log("🔗 Sending request to:", `${API_BASE}/build-pdf`); // Debug line
+      console.log("🔐 Current user:", auth.currentUser?.email); // Debug line
+      
       const token = await auth.currentUser!.getIdToken();
+      console.log("🎟️ Token obtained:", token ? "✅ Yes" : "❌ No"); // Debug line
+      
       const response = await fetch(`${API_BASE}/build-pdf`, {
         method: "POST",
         headers: {
@@ -398,6 +415,9 @@ export default function Form2290() {
         },
         body: JSON.stringify(formData),
       });
+
+      console.log("📡 Response status:", response.status); // Debug line
+      console.log("📡 Response headers:", Object.fromEntries(response.headers.entries())); // Debug line
 
       if (!response.ok) {
         let errorMsg = response.statusText;
@@ -411,17 +431,51 @@ export default function Form2290() {
         return;
       }
 
-      // Download the PDF
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "form2290.pdf";
-      a.click();
-      URL.revokeObjectURL(url);
+      // Check content type to determine if it's a file download or JSON response
+      const contentType = response.headers.get('content-type');
+      
+      if (contentType && contentType.includes('application/json')) {
+        // JSON response - multiple months scenario
+        const jsonData = await response.json();
+        
+        if (jsonData.success && jsonData.files && jsonData.files.length > 0) {
+          console.log("📋 Multiple files response received:", jsonData);
+          
+          // Show success message without automatic downloads
+          alert(`✅ Form submitted successfully! Generated ${jsonData.total_files} separate PDFs for different months. Visit My Filings section to see your files.`);
+        } else {
+          alert(`✅ Generated ${jsonData.files?.length || 0} separate filings for different months. Visit My Filings section to see your files.`);
+        }
+      } else {
+        // File download - single PDF
+        const blob = await response.blob();
+        const contentDisposition = response.headers.get('content-disposition');
+        
+        // Extract filename from Content-Disposition header
+        let filename = "form2290.pdf";
+        if (contentDisposition) {
+          const matches = contentDisposition.match(/filename="(.+)"/);
+          if (matches) {
+            filename = matches[1];
+          }
+        }
+        
+        // Download the file
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
 
-      alert("✅ Form submitted successfully! XML and PDF generated.");
+        alert("✅ Form submitted successfully! XML and PDF generated and downloaded.");
+      }
     } catch (error: any) {
+      console.error("❌ Full error object:", error); // Enhanced debug
+      console.error("❌ Error type:", typeof error); // Debug
+      console.error("❌ Error name:", error.name); // Debug
+      console.error("❌ Error message:", error.message); // Debug
+      console.error("❌ Error stack:", error.stack); // Debug
       alert(`Network error: ${error.message}`);
     }
   }
@@ -446,6 +500,8 @@ export default function Form2290() {
 
         if (response.ok) {
           const data = await response.json();
+          console.log("🔍 Admin panel received data:", data);
+          console.log("📊 Number of submissions:", data.submissions?.length || 0);
           setSubmissions(data.submissions || []);
         } else {
           console.error('Failed to fetch submissions');
@@ -517,10 +573,16 @@ export default function Form2290() {
     const formatMonth = (monthCode: string) => {
       if (!monthCode || monthCode.length !== 6) return monthCode;
       const year = monthCode.substring(0, 4);
-      const month = monthCode.substring(4, 6);
+      const monthNum = parseInt(monthCode.substring(4, 6), 10);
+      
+      // Handle invalid month numbers (like 13, 14, etc.)
+      if (monthNum < 1 || monthNum > 12) {
+        return `Invalid Month (${monthCode})`;
+      }
+      
       const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
                          'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      return `${monthNames[parseInt(month) - 1]} ${year}`;
+      return `${monthNames[monthNum - 1]} ${year}`;
     };
 
     return (
@@ -912,16 +974,27 @@ export default function Form2290() {
             title="17 chars"
             value={v.vin}
             onChange={handleChange}
+            required
           />
-          <select name={`vehicle_${i}_used_month`} value={v.used_month} onChange={handleChange}>
-            <option value="">Select Month/Year</option>
-            {months.map(m => (
+          <select
+            name={`vehicle_${i}_used_month`}
+            value={v.used_month}
+            onChange={handleChange}
+            required
+          >
+            <option value="">Select Month</option>
+            {months.map((m) => (
               <option key={m.value} value={m.value}>{m.label}</option>
             ))}
           </select>
-          <select name={`vehicle_${i}_category`} value={v.category} onChange={handleChange}>
-            <option value="">Weight Class</option>
-            {weightCategories.map(w => (
+          <select
+            name={`vehicle_${i}_category`}
+            value={v.category}
+            onChange={handleChange}
+            required
+          >
+            <option value="">Select Weight</option>
+            {weightCategories.map((w) => (
               <option key={w.value} value={w.value}>{w.label}</option>
             ))}
           </select>

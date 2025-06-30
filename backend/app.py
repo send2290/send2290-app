@@ -3,6 +3,7 @@ import datetime
 import json
 import io
 import logging
+import zipfile  # Add this import
 from functools import wraps
 from flask import Flask, request, jsonify, make_response, send_file, Response
 from flask_cors import CORS
@@ -72,6 +73,7 @@ CORS(
     app,
     resources={r"/*": {"origins": [
         "http://localhost:3000",
+        "http://localhost:3001",  # Add port 3001
         "https://send2290.com",
         "https://www.send2290.com"
     ]}},
@@ -190,62 +192,98 @@ def generate_xml():
         return make_response(jsonify({}), 200)
 
     data = request.get_json() or {}
-    # data = store_user_email_in_submission(data, request.user)  # Store email in form data
 
     if not data.get("business_name") or not data.get("ein"):
         return jsonify({"error": "Missing business_name or ein"}), 400
 
-    try:
-        xml_data = build_2290_xml(data)
-    except Exception as e:
-        app.logger.error("Error building XML: %s", e, exc_info=True)
-        return jsonify({"error": str(e)}), 500
+    # Group vehicles by month - FIX: use 'used_month' not 'used_in_month'
+    vehicles = data.get('vehicles', [])
+    vehicles_by_month = {}
+    
+    for vehicle in vehicles:
+        month = vehicle.get('used_month', data.get('used_on_july', ''))
+        if month not in vehicles_by_month:
+            vehicles_by_month[month] = []
+        vehicles_by_month[month].append(vehicle)
+    
+    if not vehicles_by_month:
+        return jsonify({"error": "No vehicles found"}), 400
 
-    if isinstance(xml_data, bytes):
-        xml_data = xml_data.decode('utf-8', errors='ignore')
-
-    xml_path = os.path.join(os.path.dirname(__file__), "form2290.xml")
-    with open(xml_path, "w", encoding="utf-8") as f:
-        f.write(xml_data)
-
-    xml_key = f"{request.user['uid']}/{data.get('used_on_july','')}/form2290.xml"
-    try:
-        with open(xml_path, 'rb') as xml_file:
-            s3.put_object(
-                Bucket=BUCKET,
-                Key=xml_key,
-                Body=xml_file,
-                ServerSideEncryption='aws:kms'
-            )
-    except Exception as e:
-        app.logger.error("S3 XML upload failed: %s", e, exc_info=True)
-
+    created_submissions = []
+    generated_xmls = {}
+    
     db = SessionLocal()
     try:
-        submission = Submission(
-            user_uid=request.user['uid'],
-            month=data.get('used_on_july',''),
-            xml_s3_key=xml_key,
-            form_data=json.dumps(data)
-        )
-        db.add(submission)
-        db.commit()
-        db.refresh(submission)
-        app.config["last_submission_id"] = submission.id
+        # Create separate XML for each month
+        for month, month_vehicles in vehicles_by_month.items():
+            # Create form data for this month's vehicles
+            month_data = data.copy()
+            month_data['vehicles'] = month_vehicles
+            month_data['used_on_july'] = month
+            
+            try:
+                xml_data = build_2290_xml(month_data)
+            except Exception as e:
+                app.logger.error("Error building XML for month %s: %s", month, e, exc_info=True)
+                continue
 
-        db.add(FilingsDocument(
-            filing_id=submission.id,
-            user_uid=request.user['uid'],
-            document_type='xml',
-            s3_key=xml_key,
-            uploaded_at=datetime.datetime.utcnow()
-        ))
+            if isinstance(xml_data, bytes):
+                xml_data = xml_data.decode('utf-8', errors='ignore')
+
+            # Save XML file with month identifier
+            xml_path = os.path.join(os.path.dirname(__file__), f"form2290_{month}.xml")
+            with open(xml_path, "w", encoding="utf-8") as f:
+                f.write(xml_data)
+
+            xml_key = f"{request.user['uid']}/{month}/form2290.xml"
+            try:
+                with open(xml_path, 'rb') as xml_file:
+                    s3.put_object(
+                        Bucket=BUCKET,
+                        Key=xml_key,
+                        Body=xml_file,
+                        ServerSideEncryption='aws:kms'
+                    )
+            except Exception as e:
+                app.logger.error("S3 XML upload failed for month %s: %s", month, e, exc_info=True)
+
+            # Create submission record for this month
+            submission = Submission(
+                user_uid=request.user['uid'],
+                month=month,
+                xml_s3_key=xml_key,
+                form_data=json.dumps(month_data)
+            )
+            db.add(submission)
+            db.commit()
+            db.refresh(submission)
+
+            db.add(FilingsDocument(
+                filing_id=submission.id,
+                user_uid=request.user['uid'],
+                document_type='xml',
+                s3_key=xml_key,
+                uploaded_at=datetime.datetime.utcnow()
+            ))
+            
+            created_submissions.append({
+                'id': submission.id,
+                'month': month,
+                'vehicle_count': len(month_vehicles),
+                'xml_key': xml_key
+            })
+            generated_xmls[month] = xml_data
+
         db.commit()
+        
+        return jsonify({
+            "message": f"✅ {len(created_submissions)} XML files generated for different months",
+            "submissions": created_submissions,
+            "xmls": generated_xmls
+        }), 200
+        
     finally:
         db.close()
-
-    app.config["last_form_data"] = data
-    return jsonify({"message": "✅ XML generated", "xml": xml_data}), 200
 
 @app.route("/download-xml", methods=["GET"])
 @verify_firebase_token
@@ -270,6 +308,10 @@ def download_pdf():
     except Exception as e:
         return jsonify({"error": f"Failed to read template PDF: {str(e)}"}), 500
 
+    # Calculate total tax amount from vehicles
+    vehicles = data.get('vehicles', [])
+    total_tax = sum(float(v.get('tax_amount', 0)) for v in vehicles)
+
     writer = PdfWriter()
     overlays = []
 
@@ -277,11 +319,26 @@ def download_pdf():
         if pg_idx == 0:
             packet = io.BytesIO()
             can = canvas.Canvas(packet, pagesize=letter)
+            
+            # Business Name (larger font)
             can.setFont("Helvetica-Bold", 16)
             can.drawCentredString(306, 396, data.get("business_name", ""))
+            
+            # Address
             can.setFont("Helvetica", 14)
             can.drawCentredString(306, 376, data.get("address", ""))
+            
+            # EIN
             can.drawCentredString(306, 356, f"EIN: {data.get('ein', '')}")
+            
+            # Total Tax Amount
+            can.setFont("Helvetica-Bold", 14)
+            can.drawCentredString(306, 336, f"Total Tax: ${total_tax:,.2f}")
+            
+            # Vehicle Count
+            can.setFont("Helvetica", 12)
+            can.drawCentredString(306, 316, f"Vehicles: {len(vehicles)}")
+            
             can.save()
             packet.seek(0)
             overlay_page = PdfReader(packet).pages[0]
@@ -347,43 +404,115 @@ def build_pdf():
         return make_response(jsonify({}), 200)
     
     data = request.get_json() or {}
-    # data = store_user_email_in_submission(data, request.user)  # Store email in form data
 
     if not data.get("business_name") or not data.get("ein"):
         return jsonify({"error": "Missing business_name or ein"}), 400
 
     user_uid = request.user['uid']
-    month = data.get('used_on_july', '')
+    
+    # Group vehicles by month - FIX: use 'used_month' not 'used_in_month'
+    vehicles = data.get('vehicles', [])
+    vehicles_by_month = {}
+    
+    print(f"🔍 DEBUGGING: Total vehicles received: {len(vehicles)}")
+    for idx, vehicle in enumerate(vehicles):
+        month = vehicle.get('used_month', data.get('used_on_july', ''))
+        print(f"🚗 Vehicle {idx+1}: VIN={vehicle.get('vin', 'N/A')[:8]}..., used_month='{month}'")
+        if month not in vehicles_by_month:
+            vehicles_by_month[month] = []
+        vehicles_by_month[month].append(vehicle)
+    
+    print(f"📅 GROUPING RESULT: {len(vehicles_by_month)} different months found:")
+    for month, month_vehicles in vehicles_by_month.items():
+        print(f"  - Month {month}: {len(month_vehicles)} vehicles")
+    
+    if not vehicles_by_month:
+        return jsonify({"error": "No vehicles found"}), 400
+
+    print(f"🚗 Vehicles grouped by month: {vehicles_by_month}")
+    print(f"🔢 Number of different months: {len(vehicles_by_month)}")
+
+    created_files = []
     
     db = SessionLocal()
     try:
-        # Find existing submission for this user and month
-        existing_submission = db.query(Submission).filter(
-            Submission.user_uid == user_uid,
-            Submission.month == month
-        ).order_by(Submission.created_at.desc()).first()
-        
-        if existing_submission:
-            # Update existing submission with PDF
-            filing_id = existing_submission.id
-            print(f"📝 Updating existing submission {filing_id} with PDF")
+        template_path = os.path.join(os.path.dirname(__file__), "f2290_template.pdf")
+        if not os.path.exists(template_path):
+            return jsonify({"error": "Template not found"}), 500
             
-            # Update the form data in case user made changes
-            existing_submission.form_data = json.dumps(data)
-            db.commit()
-        else:
-            # Create new submission (normal flow)
-            print(f"✨ Creating new submission for user {user_uid}, month {month}")
+        template = PdfReader(open(template_path, "rb"), strict=False)
+        
+        # Process each month separately
+        for month, month_vehicles in vehicles_by_month.items():
+            print(f"📅 Processing month {month} with {len(month_vehicles)} vehicles")
+            
+            # Calculate totals for this month using same logic as XML builder
+            total_tax = 0.0
+            weight_categories = {
+                'A': 100.00, 'B': 122.00, 'C': 144.00, 'D': 166.00, 'E': 188.00, 'F': 210.00,
+                'G': 232.00, 'H': 254.00, 'I': 276.00, 'J': 298.00, 'K': 320.00, 'L': 342.00,
+                'M': 364.00, 'N': 386.00, 'O': 408.00, 'P': 430.00, 'Q': 452.00, 'R': 474.00,
+                'S': 496.00, 'T': 518.00, 'U': 540.00, 'V': 550.00, 'W': 0.00
+            }
+            logging_rates = {
+                'A': 75.0, 'B': 91.5, 'C': 108.0, 'D': 124.5, 'E': 141.0, 'F': 157.5,
+                'G': 174.0, 'H': 190.5, 'I': 207.0, 'J': 223.5, 'K': 240.0, 'L': 256.5,
+                'M': 273.0, 'N': 289.5, 'O': 306.0, 'P': 322.5, 'Q': 339.0, 'R': 355.5,
+                'S': 372.0, 'T': 388.5, 'U': 405.0, 'V': 412.5, 'W': 0.0
+            }
+            
+            for vehicle in month_vehicles:
+                used_month = vehicle.get('used_month', '')
+                category = vehicle.get('category', '')
+                is_logging = vehicle.get('is_logging', False)
+                is_suspended = vehicle.get('is_suspended', False)
+                is_agricultural = vehicle.get('is_agricultural', False)
+                
+                if not used_month or not category or is_suspended or is_agricultural:
+                    continue
+                
+                # Extract month number (last 2 digits) - match XML builder logic exactly
+                try:
+                    month_num = int(used_month[-2:]) if used_month.isdigit() else 0
+                except:
+                    continue
+                
+                # Use exact XML builder logic for months_left calculation
+                months_left = 12 if month_num >= 7 else (13 - month_num if 1 <= month_num <= 12 else 0)
+                
+                if months_left == 0:
+                    continue
+                
+                # Get base rate - match XML builder exactly
+                if category in weight_categories:
+                    base_rate = logging_rates[category] if is_logging else weight_categories[category]
+                    
+                    # Calculate tax using exact XML builder formula
+                    vehicle_tax = round(base_rate * (months_left / 12), 2)
+                    total_tax += vehicle_tax
+            
+            print(f"💰 Total tax for month {month}: ${total_tax:.2f}")
+            
+            # Always create a new submission (remove the update logic)
+            print(f"✨ Creating new submission for month {month}")
+            
+            # Create form data for this month
+            month_data = data.copy()
+            month_data['vehicles'] = month_vehicles
+            month_data['used_on_july'] = month
             
             # Generate XML first
             try:
-                xml_data = build_2290_xml(data)
+                xml_data = build_2290_xml(month_data)
             except Exception as e:
-                app.logger.error("Error building XML: %s", e, exc_info=True)
-                return jsonify({"error": str(e)}), 500
+                app.logger.error("Error building XML for month %s: %s", month, e, exc_info=True)
+                continue
+
+            if isinstance(xml_data, bytes):
+                xml_data = xml_data.decode('utf-8', errors='ignore')
 
             xml_key = f"{user_uid}/{month}/form2290.xml"
-            xml_path = os.path.join(os.path.dirname(__file__), "form2290.xml")
+            xml_path = os.path.join(os.path.dirname(__file__), f"form2290_{month}.xml")
             with open(xml_path, "w", encoding="utf-8") as f:
                 f.write(xml_data)
 
@@ -397,14 +526,14 @@ def build_pdf():
                         ServerSideEncryption='aws:kms'
                     )
             except Exception as e:
-                app.logger.error("S3 XML upload failed: %s", e, exc_info=True)
+                app.logger.error("S3 XML upload failed for month %s: %s", month, e, exc_info=True)
 
             # Create submission record
             submission = Submission(
                 user_uid=user_uid,
                 month=month,
                 xml_s3_key=xml_key,
-                form_data=json.dumps(data)
+                form_data=json.dumps(month_data)
             )
             db.add(submission)
             db.commit()
@@ -421,76 +550,143 @@ def build_pdf():
             ))
             db.commit()
 
-        # Generate PDF
-        template_path = os.path.join(os.path.dirname(__file__), "f2290_template.pdf")
-        template = PdfReader(open(template_path, "rb"), strict=False)
-        writer = PdfWriter()
-        overlays = []
+            # Generate PDF for this month
+            writer = PdfWriter()
+            overlays = []
 
-        for pg_idx in range(len(template.pages)):
-            if pg_idx == 0:
-                packet = io.BytesIO()
-                can = canvas.Canvas(packet, pagesize=letter)
-                can.setFont("Helvetica-Bold", 16)
-                can.drawCentredString(306, 396, data.get("business_name", ""))
-                can.setFont("Helvetica", 14)
-                can.drawCentredString(306, 376, data.get("address", ""))
-                can.drawCentredString(306, 356, f"EIN: {data.get('ein', '')}")
-                can.save()
-                packet.seek(0)
-                overlay_page = PdfReader(packet).pages[0]
-                overlays.append(overlay_page)
-            else:
-                overlays.append(None)
+            for pg_idx in range(len(template.pages)):
+                if pg_idx == 0:
+                    packet = io.BytesIO()
+                    can = canvas.Canvas(packet, pagesize=letter)
+                    
+                    # Business Name (larger font)
+                    can.setFont("Helvetica-Bold", 16)
+                    can.drawCentredString(306, 396, data.get("business_name", ""))
+                    
+                    # Address
+                    can.setFont("Helvetica", 14)
+                    can.drawCentredString(306, 376, data.get("address", ""))
+                    
+                    # EIN
+                    can.drawCentredString(306, 356, f"EIN: {data.get('ein', '')}")
+                    
+                    # Month-specific information
+                    can.setFont("Helvetica-Bold", 12)
+                    can.drawCentredString(306, 336, f"Month: {month}")
+                    
+                    # Total Tax Amount for this month
+                    can.setFont("Helvetica-Bold", 14)
+                    can.drawCentredString(306, 316, f"Total Tax: ${total_tax:,.2f}")
+                    
+                    # Vehicle Count for this month
+                    can.setFont("Helvetica", 12)
+                    can.drawCentredString(306, 296, f"Vehicles: {len(month_vehicles)}")
+                    
+                    can.save()
+                    packet.seek(0)
+                    overlay_page = PdfReader(packet).pages[0]
+                    overlays.append(overlay_page)
+                else:
+                    overlays.append(None)
 
-        for idx, page in enumerate(template.pages):
-            if overlays[idx]:
-                page.merge_page(overlays[idx])
-            writer.add_page(page)
+            for idx, page in enumerate(template.pages):
+                if overlays[idx]:
+                    page.merge_page(overlays[idx])
+                writer.add_page(page)
 
-        out_dir = os.path.join(os.path.dirname(__file__), "output")
-        os.makedirs(out_dir, exist_ok=True)
-        out_path = os.path.join(out_dir, "form2290_filled.pdf")
-        with open(out_path, "wb") as f:
-            writer.write(f)
+            # Save PDF with month identifier
+            out_dir = os.path.join(os.path.dirname(__file__), "output")
+            os.makedirs(out_dir, exist_ok=True)
+            out_path = os.path.join(out_dir, f"form2290_{month}.pdf")
+            with open(out_path, "wb") as f:
+                writer.write(f)
 
-        # Upload PDF to S3
-        pdf_key = f"{user_uid}/{month}/form2290.pdf"
-        try:
-            with open(out_path, 'rb') as pf:
-                s3.put_object(
-                    Bucket=BUCKET,
-                    Key=pdf_key,
-                    Body=pf,
-                    ServerSideEncryption='aws:kms'
-                )
-        except Exception as e:
-            app.logger.error("S3 PDF upload failed: %s", e, exc_info=True)
+            # Upload PDF to S3
+            pdf_key = f"{user_uid}/{month}/form2290.pdf"
+            try:
+                with open(out_path, 'rb') as pf:
+                    s3.put_object(
+                        Bucket=BUCKET,
+                        Key=pdf_key,
+                        Body=pf,
+                        ServerSideEncryption='aws:kms'
+                    )
+            except Exception as e:
+                app.logger.error("S3 PDF upload failed for month %s: %s", month, e, exc_info=True)
 
-        # Update submission with PDF S3 key
-        submission = db.query(Submission).get(filing_id)
-        if submission:
-            submission.pdf_s3_key = pdf_key
-            db.commit()
+            # Update submission with PDF S3 key
+            submission = db.query(Submission).get(filing_id)
+            if submission:
+                submission.pdf_s3_key = pdf_key
+                db.commit()
+            
+            # Add PDF document record (only if not already exists)
+            existing_pdf_doc = db.query(FilingsDocument).filter(
+                FilingsDocument.filing_id == filing_id,
+                FilingsDocument.document_type == 'pdf'
+            ).first()
+            
+            if not existing_pdf_doc:
+                db.add(FilingsDocument(
+                    filing_id=filing_id,
+                    user_uid=user_uid,
+                    document_type='pdf',
+                    s3_key=pdf_key,
+                    uploaded_at=datetime.datetime.utcnow()
+                ))
+                db.commit()
+
+            created_files.append({
+                'month': month,
+                'filing_id': filing_id,
+                'vehicle_count': len(month_vehicles),
+                'total_tax': total_tax,
+                'pdf_path': out_path
+            })
+
+        print(f"✅ Form 2290 completed for {len(created_files)} different months")
+        print(f"📁 Created files: {[f['month'] for f in created_files]}")
         
-        # Add PDF document record (only if not already exists)
-        existing_pdf_doc = db.query(FilingsDocument).filter(
-            FilingsDocument.filing_id == filing_id,
-            FilingsDocument.document_type == 'pdf'
-        ).first()
-        
-        if not existing_pdf_doc:
-            db.add(FilingsDocument(
-                filing_id=filing_id,
-                user_uid=user_uid,
-                document_type='pdf',
-                s3_key=pdf_key,
-                uploaded_at=datetime.datetime.utcnow()
-            ))
-            db.commit()
-
-        print(f"✅ Form 2290 completed for submission {filing_id}")
-        return send_file(out_path, as_attachment=True)
+        # NEW LOGIC: Single file for one month, JSON response with download URLs for multiple months
+        print(f"🔀 DOWNLOAD DECISION: {len(created_files)} file(s) created")
+        if len(created_files) == 1:
+            # Single month - return PDF directly
+            print(f"📄 Returning single PDF for month {created_files[0]['month']}")
+            return send_file(
+                created_files[0]['pdf_path'], 
+                as_attachment=True, 
+                download_name=f"form2290_{created_files[0]['month']}.pdf"
+            )
+        else:
+            # Multiple months - return JSON with download information
+            print(f"� Returning JSON response with {len(created_files)} PDF download URLs")
+            
+            download_info = []
+            for file_info in created_files:
+                month = file_info['month']
+                filing_id = file_info['filing_id']
+                vehicle_count = file_info['vehicle_count']
+                total_tax = file_info['total_tax']
+                
+                # Convert month code to readable format
+                month_name = f"{month[:4]}-{month[4:]}"  # 202507 -> 2025-07
+                
+                download_info.append({
+                    'month': month,
+                    'month_display': month_name,
+                    'filing_id': filing_id,
+                    'vehicle_count': vehicle_count,
+                    'total_tax': total_tax,
+                    'download_url': f"/download-pdf-by-month/{month}",
+                    'filename': f"form2290_{month_name}_{vehicle_count}vehicles.pdf"
+                })
+            
+            return jsonify({
+                "success": True,
+                "message": f"Generated {len(created_files)} separate PDFs for different months",
+                "files": download_info,
+                "total_files": len(created_files)
+            }), 200
     
     finally:
         db.close()
@@ -560,6 +756,10 @@ def admin_view_submissions():
             # Simple query that was working before
             submissions = db.query(Submission).order_by(Submission.created_at.desc()).all()
             
+            print(f"🔍 ADMIN DEBUG: Found {len(submissions)} total submissions in database")
+            for i, s in enumerate(submissions[:5]):  # Show first 5
+                print(f"  {i+1}. ID={s.id}, Month={s.month}, User={s.user_uid[:8]}..., Created={s.created_at}")
+            
             submissions_list = []
             for submission in submissions:
                 # Parse form_data to extract business details
@@ -571,7 +771,51 @@ def admin_view_submissions():
                 # Calculate totals from vehicles
                 vehicles = form_data.get('vehicles', [])
                 total_vehicles = len(vehicles)
-                total_tax = sum(float(v.get('tax_amount', 0)) for v in vehicles)
+                
+                # Calculate tax using the same logic as frontend
+                total_tax = 0
+                weight_categories = {
+                    'A': 100.00, 'B': 122.00, 'C': 144.00, 'D': 166.00, 'E': 188.00, 'F': 210.00,
+                    'G': 232.00, 'H': 254.00, 'I': 276.00, 'J': 298.00, 'K': 320.00, 'L': 342.00,
+                    'M': 364.00, 'N': 386.00, 'O': 408.00, 'P': 430.00, 'Q': 452.00, 'R': 474.00,
+                    'S': 496.00, 'T': 518.00, 'U': 540.00, 'V': 550.00, 'W': 0.00
+                }
+                logging_rates = {
+                    'A': 75, 'B': 91.5, 'C': 108, 'D': 124.5, 'E': 141, 'F': 157.5,
+                    'G': 174, 'H': 190.5, 'I': 207, 'J': 223.5, 'K': 240, 'L': 256.5,
+                    'M': 273, 'N': 289.5, 'O': 306, 'P': 322.5, 'Q': 339, 'R': 355.5,
+                    'S': 372, 'T': 388.5, 'U': 405, 'V': 412.5, 'W': 0
+                }
+                
+                for vehicle in vehicles:
+                    used_month = vehicle.get('used_month', '')
+                    category = vehicle.get('category', '')
+                    is_logging = vehicle.get('is_logging', False)
+                    is_suspended = vehicle.get('is_suspended', False)
+                    is_agricultural = vehicle.get('is_agricultural', False)
+                    
+                    if not used_month or not category or is_suspended or is_agricultural:
+                        continue
+                    
+                    # Extract month number (last 2 digits) - match XML builder logic exactly
+                    try:
+                        month_num = int(used_month[-2:]) if used_month.isdigit() else 0
+                    except:
+                        continue
+                    
+                    # Use exact XML builder logic for months_left calculation
+                    months_left = 12 if month_num >= 7 else (13 - month_num if 1 <= month_num <= 12 else 0)
+                    
+                    if months_left == 0:
+                        continue
+                    
+                    # Get base rate - match XML builder exactly
+                    if category in weight_categories:
+                        base_rate = logging_rates[category] if is_logging else weight_categories[category]
+                        
+                        # Calculate tax using exact XML builder formula
+                        vehicle_tax = round(base_rate * (months_left / 12), 2)
+                        total_tax += vehicle_tax
                 
                 # Simple user display - no email lookup for now
                 user_display = f"User: {submission.user_uid[:8]}..." if submission.user_uid else "Unknown"
@@ -831,13 +1075,103 @@ def debug_s3_test():
             "error": str(e)
         }), 500
 
+@app.route("/user/submissions", methods=["GET"])
+@verify_firebase_token
+def user_submissions():
+    """Get all submissions for the current user"""
+    user_uid = request.user['uid']
+    db = SessionLocal()
+    try:
+        submissions = db.query(Submission).filter(
+            Submission.user_uid == user_uid
+        ).order_by(Submission.created_at.desc()).all()
+        
+        submissions_list = []
+        for submission in submissions:
+            # Parse form_data to get business info if available
+            form_data = {}
+            if submission.form_data:
+                try:
+                    form_data = json.loads(submission.form_data)
+                except json.JSONDecodeError:
+                    form_data = {}
+            
+            # Calculate totals from vehicles data (same logic as admin endpoint)
+            vehicles = form_data.get('vehicles', [])
+            total_vehicles = len(vehicles)
+            
+            # Calculate tax using the same logic as admin endpoint
+            total_tax = 0
+            weight_categories = {
+                'A': 100.00, 'B': 122.00, 'C': 144.00, 'D': 166.00, 'E': 188.00, 'F': 210.00,
+                'G': 232.00, 'H': 254.00, 'I': 276.00, 'J': 298.00, 'K': 320.00, 'L': 342.00,
+                'M': 364.00, 'N': 386.00, 'O': 408.00, 'P': 430.00, 'Q': 452.00, 'R': 474.00,
+                'S': 496.00, 'T': 518.00, 'U': 540.00, 'V': 550.00, 'W': 0.00
+            }
+            logging_rates = {
+                'A': 75, 'B': 91.5, 'C': 108, 'D': 124.5, 'E': 141, 'F': 157.5,
+                'G': 174, 'H': 190.5, 'I': 207, 'J': 223.5, 'K': 240, 'L': 256.5,
+                'M': 273, 'N': 289.5, 'O': 306, 'P': 322.5, 'Q': 339, 'R': 355.5,
+                'S': 372, 'T': 388.5, 'U': 405, 'V': 412.5, 'W': 0
+            }
+            
+            for vehicle in vehicles:
+                used_month = vehicle.get('used_month', '')
+                category = vehicle.get('category', '')
+                is_logging = vehicle.get('is_logging', False)
+                is_suspended = vehicle.get('is_suspended', False)
+                is_agricultural = vehicle.get('is_agricultural', False)
+                
+                if not used_month or not category or is_suspended or is_agricultural:
+                    continue
+                
+                # Extract month number (last 2 digits) - match XML builder logic exactly
+                try:
+                    month_num = int(used_month[-2:]) if used_month.isdigit() else 0
+                except:
+                    continue
+                
+                # Use exact XML builder logic for months_left calculation
+                months_left = 12 if month_num >= 7 else (13 - month_num if 1 <= month_num <= 12 else 0)
+                
+                if months_left == 0:
+                    continue
+                
+                # Get base rate - match XML builder exactly
+                if category in weight_categories:
+                    base_rate = logging_rates[category] if is_logging else weight_categories[category]
+                    
+                    # Calculate tax using exact XML builder formula
+                    vehicle_tax = round(base_rate * (months_left / 12), 2)
+                    total_tax += vehicle_tax
+            
+            submissions_list.append({
+                "id": str(submission.id),
+                "business_name": form_data.get("business_name", "Unknown Business"),
+                "ein": form_data.get("ein", "Unknown EIN"),
+                "created_at": submission.created_at.isoformat() if submission.created_at else "",
+                "month": submission.month,
+                "total_vehicles": total_vehicles,
+                "total_tax": round(total_tax, 2),
+                "status": "Submitted",  # You can enhance this based on your business logic
+                "xml_s3_key": submission.xml_s3_key,
+                "pdf_s3_key": submission.pdf_s3_key
+            })
+        
+        return jsonify({
+            "count": len(submissions_list),
+            "submissions": submissions_list
+        })
+    except Exception as e:
+        app.logger.error("Error fetching user submissions: %s", e, exc_info=True)
+        return jsonify({"error": "Failed to fetch submissions"}), 500
+    finally:
+        db.close()
+
 @app.route("/user/documents", methods=["GET"])
 @verify_firebase_token
 def user_documents():
-    """
-    Endpoint for users to view their submitted documents.
-    Returns a list of documents with metadata and download links.
-    """
+    """Get all documents for the current user"""
     user_uid = request.user['uid']
     db = SessionLocal()
     try:
@@ -882,8 +1216,120 @@ def user_documents():
             "count": len(submissions),
             "submissions": list(submissions.values())
         })
+    except Exception as e:
+        app.logger.error("Error fetching user documents: %s", e, exc_info=True)
+        return jsonify({"error": "Failed to fetch documents"}), 500
     finally:
         db.close()
+
+@app.route("/user/submissions/<submission_id>/download/<file_type>", methods=["GET"])
+@verify_firebase_token
+def download_submission_file(submission_id, file_type):
+    """Download PDF or XML file for a specific submission"""
+    user_uid = request.user['uid']
+    
+    if file_type not in ['pdf', 'xml']:
+        return jsonify({"error": "Invalid file type. Must be 'pdf' or 'xml'"}), 400
+    
+    db = SessionLocal()
+    try:
+        submission = db.query(Submission).filter(
+            Submission.id == submission_id,
+            Submission.user_uid == user_uid
+        ).first()
+        
+        if not submission:
+            return jsonify({"error": "Submission not found"}), 404
+        
+        # Get the appropriate S3 key
+        s3_key = submission.pdf_s3_key if file_type == 'pdf' else submission.xml_s3_key
+        
+        if not s3_key:
+            return jsonify({"error": f"{file_type.upper()} file not found for this submission"}), 404
+        
+        # Generate presigned URL for download
+        try:
+            url = s3.generate_presigned_url(
+                'get_object',
+                Params={
+                    'Bucket': BUCKET,
+                    'Key': s3_key
+                },
+                ExpiresIn=3600  # 1 hour
+            )
+            
+            # Fetch the file from S3 and return it as a download
+            response = s3.get_object(Bucket=BUCKET, Key=s3_key)
+            file_content = response['Body'].read()
+            
+            # Set appropriate content type and headers
+            content_type = 'application/pdf' if file_type == 'pdf' else 'application/xml'
+            filename = f"form2290-{submission_id}.{file_type}"
+            
+            return Response(
+                file_content,
+                mimetype=content_type,
+                headers={
+                    'Content-Disposition': f'attachment; filename={filename}',
+                    'Content-Type': content_type
+                }
+            )
+            
+        except s3.exceptions.NoSuchKey:
+            return jsonify({"error": f"File not found in storage"}), 404
+        except Exception as e:
+            app.logger.error(f"S3 download error: {e}")
+            return jsonify({"error": "Download failed"}), 500
+    
+    except Exception as e:
+        app.logger.error("Error downloading submission file: %s", e, exc_info=True)
+        return jsonify({"error": "Failed to download file"}), 500
+    finally:
+        db.close()
+
+@app.route("/download-pdf-by-month/<month>", methods=["GET"])
+@verify_firebase_token
+def download_pdf_by_month(month):
+    """Download PDF for a specific month"""
+    user_uid = request.user['uid']
+    
+    db = SessionLocal()
+    try:
+        submission = db.query(Submission).filter(
+            Submission.user_uid == user_uid,
+            Submission.month == month
+        ).order_by(Submission.created_at.desc()).first()
+        
+        if not submission or not submission.pdf_s3_key:
+            return jsonify({"error": f"PDF not found for month {month}"}), 404
+        
+        # Generate presigned URL for download
+        try:
+            url = s3.generate_presigned_url(
+                'get_object',
+                Params={'Bucket': BUCKET, 'Key': submission.pdf_s3_key},
+                ExpiresIn=300
+            )
+            return jsonify({"download_url": url}), 200
+        except Exception as e:
+            app.logger.error("Failed to generate presigned URL: %s", e)
+            return jsonify({"error": "Failed to generate download link"}), 500
+    
+    finally:
+        db.close()
+
+@app.route("/test-connection", methods=["GET", "POST", "OPTIONS"])
+def test_connection():
+    """Test endpoint to verify connection"""
+    if request.method == "OPTIONS":
+        return make_response(jsonify({}), 200)
+    
+    return jsonify({
+        "status": "success",
+        "message": "Backend is connected and working!",
+        "method": request.method,
+        "timestamp": datetime.datetime.utcnow().isoformat()
+    }), 200
 
 if __name__ == "__main__":
     print("🔥 Starting Flask development server...")
