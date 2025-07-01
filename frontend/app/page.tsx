@@ -807,287 +807,337 @@ export default function Form2290() {
     fontSize: '0.9rem'
   }
 
+  // Responsive styles for mobile
+  // Add this at the top of your return statement
+  // (You can move it to _app.tsx or a global CSS file for site-wide effect)
+  // This ensures all your pages using this component are mobile friendly
   return (
-    <div style={container}>
-      {/* --- Login Modal for existing users --- */}
-      {showLoginModal && (
-        <LoginModal email={pendingEmail} onClose={() => setShowLoginModal(false)} />
-      )}
+    <>
+      <style>{`
+        .form-container {
+          max-width: 900px;
+          width: 100%;
+          margin: 0 auto;
+          padding: 20px;
+          font-family: 'Segoe UI', sans-serif;
+        }
+        @media (max-width: 600px) {
+          .form-container {
+            max-width: 100vw;
+            padding: 8px;
+          }
+          .vehicle-row {
+            flex-direction: column !important;
+            align-items: stretch !important;
+            gap: 6px !important;
+          }
+          .vehicle-row input,
+          .vehicle-row select,
+          .vehicle-row button {
+            width: 100% !important;
+            min-width: 0 !important;
+            font-size: 1rem;
+          }
+          .vehicle-row label {
+            width: 100%;
+            font-size: 1rem;
+          }
+          .vehicle-row {
+            margin-bottom: 18px !important;
+          }
+          .form-container input,
+          .form-container select {
+            width: 100% !important;
+            min-width: 0 !important;
+            font-size: 1rem;
+          }
+          .form-container button {
+            width: 100%;
+            font-size: 1.1rem;
+          }
+        }
+      `}</style>
+      <div className="form-container">
+        {/* --- Login Modal for existing users --- */}
+        {showLoginModal && (
+          <LoginModal email={pendingEmail} onClose={() => setShowLoginModal(false)} />
+        )}
 
-      {/* Business Info (now includes Email at the start) */}
-      <h2>Business Info</h2>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-        <div style={{ position: 'relative' }}>
-          <input
-            name="email"
-            type="email"
-            placeholder="Email"
-            value={formData.email}
-            onChange={handleChange}
-            required
-            disabled={!!auth.currentUser}
-            style={{
-              backgroundColor: auth.currentUser ? '#f5f5f5' : 'white',
-              color: auth.currentUser ? '#666' : 'black',
-              cursor: auth.currentUser ? 'not-allowed' : 'text'
-            }}
-          />
-          {auth.currentUser && (
-            <span style={{ 
-              fontSize: '0.8rem', 
-              color: '#666', 
-              fontStyle: 'italic',
-              marginLeft: '4px'
-            }}>
-              (from account)
-            </span>
-          )}
-        </div>
-        <input name="business_name" placeholder="Name" value={formData.business_name} onChange={handleChange} />
-        <input
-          name="ein"
-          placeholder="EIN"
-          pattern="\d{9}"
-          maxLength={9}
-          inputMode="numeric"
-          title="9 digits"
-          value={formData.ein}
-          onChange={handleChange}
-        />
-        <input name="address" placeholder="Address" value={formData.address} onChange={handleChange} />
-        <input name="city" placeholder="City" value={formData.city} onChange={handleChange} />
-        <input name="state" placeholder="State" value={formData.state} onChange={handleChange} />
-        <input
-          name="zip"
-          placeholder="ZIP"
-          pattern="\d{5}"
-          maxLength={5}
-          inputMode="numeric"
-          title="5 digits"
-          value={formData.zip}
-          onChange={handleChange}
-        />
-      </div>
-
-      {/* Return Flags */}
-      <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', marginTop: 12 }}>
-        {['address_change','amended_return','vin_correction','final_return'].map(flag => (
-          <label key={flag} style={labelSmall}>
-            <input type="checkbox" name={flag} checked={(formData as any)[flag]} onChange={handleChange} />
-            {flag.replace(/_/g,' ')}
-          </label>
-        ))}
-      </div>
-
-      {/* Paid Preparer */}
-      <h2 style={{ marginTop: 20 }}>
-        <label style={labelSmall}>
-          <input
-            type="checkbox"
-            name="include_preparer"
-            checked={formData.include_preparer}
-            onChange={handleChange}
-          />
-          Include Paid Preparer
-        </label>
-      </h2>
-      {formData.include_preparer && (
-        <>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <input name="preparer_name" placeholder="Preparer Name" value={formData.preparer_name} onChange={handleChange} required />
-            <input name="preparer_ptin" placeholder="PTIN" value={formData.preparer_ptin} onChange={handleChange} required />
-            <input type="date" name="date_prepared" max={todayStr} value={formData.date_prepared} onChange={handleChange} required />
+        {/* Business Info (now includes Email at the start) */}
+        <h2>Business Info</h2>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <div style={{ position: 'relative' }}>
+            <input
+              name="email"
+              type="email"
+              placeholder="Email"
+              value={formData.email}
+              onChange={handleChange}
+              required
+              disabled={!!auth.currentUser}
+              style={{
+                backgroundColor: auth.currentUser ? '#f5f5f5' : 'white',
+                color: auth.currentUser ? '#666' : 'black',
+                cursor: auth.currentUser ? 'not-allowed' : 'text'
+              }}
+            />
+            {auth.currentUser && (
+              <span style={{ 
+                fontSize: '0.8rem', 
+                color: '#666', 
+                fontStyle: 'italic',
+                marginLeft: '4px'
+              }}>
+                (from account)
+              </span>
+            )}
           </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
-            <input name="preparer_firm_name" placeholder="Firm Name" value={formData.preparer_firm_name} onChange={handleChange} required />
+          <input name="business_name" placeholder="Name" value={formData.business_name} onChange={handleChange} />
+          <input
+            name="ein"
+            placeholder="EIN"
+            pattern="\d{9}"
+            maxLength={9}
+            inputMode="numeric"
+            title="9 digits"
+            value={formData.ein}
+            onChange={handleChange}
+          />
+          <input name="address" placeholder="Address" value={formData.address} onChange={handleChange} />
+          <input name="city" placeholder="City" value={formData.city} onChange={handleChange} />
+          <input name="state" placeholder="State" value={formData.state} onChange={handleChange} />
+          <input
+            name="zip"
+            placeholder="ZIP"
+            pattern="\d{5}"
+            maxLength={5}
+            inputMode="numeric"
+            title="5 digits"
+            value={formData.zip}
+            onChange={handleChange}
+          />
+        </div>
+
+        {/* Return Flags */}
+        <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', marginTop: 12 }}>
+          {['address_change','amended_return','vin_correction','final_return'].map(flag => (
+            <label key={flag} style={labelSmall}>
+              <input type="checkbox" name={flag} checked={(formData as any)[flag]} onChange={handleChange} />
+              {flag.replace(/_/g,' ')}
+            </label>
+          ))}
+        </div>
+
+        {/* Paid Preparer */}
+        <h2 style={{ marginTop: 20 }}>
+          <label style={labelSmall}>
             <input
-              name="preparer_firm_ein"
-              placeholder="Firm EIN"
-              pattern="\d{9}"
-              maxLength={9}
-              inputMode="numeric"
-              title="9 digits"
-              value={formData.preparer_firm_ein}
+              type="checkbox"
+              name="include_preparer"
+              checked={formData.include_preparer}
               onChange={handleChange}
-              required
             />
-            <input name="preparer_firm_address" placeholder="Firm Address" value={formData.preparer_firm_address} onChange={handleChange} required />
+            Include Paid Preparer
+          </label>
+        </h2>
+        {formData.include_preparer && (
+          <>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <input name="preparer_name" placeholder="Preparer Name" value={formData.preparer_name} onChange={handleChange} required />
+              <input name="preparer_ptin" placeholder="PTIN" value={formData.preparer_ptin} onChange={handleChange} required />
+              <input type="date" name="date_prepared" max={todayStr} value={formData.date_prepared} onChange={handleChange} required />
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+              <input name="preparer_firm_name" placeholder="Firm Name" value={formData.preparer_firm_name} onChange={handleChange} required />
+              <input
+                name="preparer_firm_ein"
+                placeholder="Firm EIN"
+                pattern="\d{9}"
+                maxLength={9}
+                inputMode="numeric"
+                title="9 digits"
+                value={formData.preparer_firm_ein}
+                onChange={handleChange}
+                required
+              />
+              <input name="preparer_firm_address" placeholder="Firm Address" value={formData.preparer_firm_address} onChange={handleChange} required />
+              <input
+                name="preparer_firm_citystatezip"
+                placeholder="Firm City/State/ZIP"
+                value={formData.preparer_firm_citystatezip}
+                onChange={handleChange}
+                required
+              />
+              <input
+                type="tel"
+                name="preparer_firm_phone"
+                placeholder="Firm Phone (10 digits)"
+                pattern="\d{10}"
+                maxLength={10}
+                inputMode="numeric"
+                title="10 digits"
+                value={formData.preparer_firm_phone}
+                onChange={handleChange}
+                required
+              />
+            </div>
+          </>
+        )}
+
+        {/* Third-Party Designee / Consent */}
+        <h2 style={{ marginTop: 20 }}>
+          <label style={labelSmall}>
+            <input type="checkbox" name="consent_to_disclose" checked={formData.consent_to_disclose} onChange={handleChange} />
+            Consent to Disclose
+          </label>
+        </h2>
+        {formData.consent_to_disclose && (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <input name="designee_name" placeholder="Designee Name" value={formData.designee_name} onChange={handleChange} required />
             <input
-              name="preparer_firm_citystatezip"
-              placeholder="Firm City/State/ZIP"
-              value={formData.preparer_firm_citystatezip}
-              onChange={handleChange}
-              required
-            />
-            <input
-              type="tel"
-              name="preparer_firm_phone"
-              placeholder="Firm Phone (10 digits)"
+              name="designee_phone"
+              placeholder="Designee Phone (10 digits)"
               pattern="\d{10}"
               maxLength={10}
               inputMode="numeric"
               title="10 digits"
-              value={formData.preparer_firm_phone}
+              value={formData.designee_phone}
               onChange={handleChange}
               required
             />
+            <input name="designee_pin" placeholder="Designee PIN" value={formData.designee_pin} onChange={handleChange} required />
           </div>
-        </>
-      )}
+        )}
 
-      {/* Third-Party Designee / Consent */}
-      <h2 style={{ marginTop: 20 }}>
-        <label style={labelSmall}>
-          <input type="checkbox" name="consent_to_disclose" checked={formData.consent_to_disclose} onChange={handleChange} />
-          Consent to Disclose
-        </label>
-      </h2>
-      {formData.consent_to_disclose && (
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <input name="designee_name" placeholder="Designee Name" value={formData.designee_name} onChange={handleChange} required />
-          <input
-            name="designee_phone"
-            placeholder="Designee Phone (10 digits)"
-            pattern="\d{10}"
-            maxLength={10}
-            inputMode="numeric"
-            title="10 digits"
-            value={formData.designee_phone}
-            onChange={handleChange}
-            required
-          />
-          <input name="designee_pin" placeholder="Designee PIN" value={formData.designee_pin} onChange={handleChange} required />
-        </div>
-      )}
-
-      {/* Vehicles */}
-      <h2 style={{ marginTop: 20 }}>Vehicles</h2>
-      {formData.vehicles.map((v, i) => (
-        <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
-          <input
-            style={{ width: 180 }}
-            type="text"
-            name={`vehicle_${i}_vin`}
-            placeholder="VIN"
-            pattern="[A-Za-z0-9]{17}"
-            maxLength={17}
-            title="17 chars"
-            value={v.vin}
-            onChange={handleChange}
-            required
-          />
-          <select
-            name={`vehicle_${i}_used_month`}
-            value={v.used_month}
-            onChange={handleChange}
-            required
-          >
-            <option value="">Select Month</option>
-            {months.map((m) => (
-              <option key={m.value} value={m.value}>{m.label}</option>
-            ))}
-          </select>
-          <select
-            name={`vehicle_${i}_category`}
-            value={v.category}
-            onChange={handleChange}
-            required
-          >
-            <option value="">Select Weight</option>
-            {weightCategories.map((w) => (
-              <option key={w.value} value={w.value}>{w.label}</option>
-            ))}
-          </select>
-          <label style={labelSmall}>
-            Logging? <input type="checkbox" name={`vehicle_${i}_is_logging`} checked={v.is_logging} onChange={handleChange} />
-          </label>
-          <label style={labelSmall}>
-            Agricultural ≤7,000 mi <input type="checkbox" name={`vehicle_${i}_is_agricultural`} checked={v.is_agricultural} onChange={handleChange} />
-          </label>
-          <label style={labelSmall}>
-            Non-Agricultural ≤5,000 mi <input type="checkbox" name={`vehicle_${i}_is_suspended`} checked={v.is_suspended} onChange={handleChange} />
-          </label>
+        {/* Vehicles */}
+        <h2 style={{ marginTop: 20 }}>Vehicles</h2>
+        {formData.vehicles.map((v, i) => (
+          <div key={i} className="vehicle-row" style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
+            <input
+              style={{ width: 180 }}
+              type="text"
+              name={`vehicle_${i}_vin`}
+              placeholder="VIN"
+              pattern="[A-Za-z0-9]{17}"
+              maxLength={17}
+              title="17 chars"
+              value={v.vin}
+              onChange={handleChange}
+              required
+            />
+            <select
+              name={`vehicle_${i}_used_month`}
+              value={v.used_month}
+              onChange={handleChange}
+              required
+            >
+              <option value="">Select Month</option>
+              {months.map((m) => (
+                <option key={m.value} value={m.value}>{m.label}</option>
+              ))}
+            </select>
+            <select
+              name={`vehicle_${i}_category`}
+              value={v.category}
+              onChange={handleChange}
+              required
+            >
+              <option value="">Select Weight</option>
+              {weightCategories.map((w) => (
+                <option key={w.value} value={w.value}>{w.label}</option>
+              ))}
+            </select>
+            <label style={labelSmall}>
+              Logging? <input type="checkbox" name={`vehicle_${i}_is_logging`} checked={v.is_logging} onChange={handleChange} />
+            </label>
+            <label style={labelSmall}>
+              Agricultural ≤7,000 mi <input type="checkbox" name={`vehicle_${i}_is_agricultural`} checked={v.is_agricultural} onChange={handleChange} />
+            </label>
+            <label style={labelSmall}>
+              Non-Agricultural ≤5,000 mi <input type="checkbox" name={`vehicle_${i}_is_suspended`} checked={v.is_suspended} onChange={handleChange} />
+            </label>
+            <button
+              type="button"
+              style={{ ...btnSmall, backgroundColor: '#d32f2f', color: '#fff' }}
+              onClick={() => removeVehicle(i)}
+            >
+              Remove
+            </button>
+          </div>
+        ))}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
           <button
             type="button"
-            style={{ ...btnSmall, backgroundColor: '#d32f2f', color: '#fff' }}
-            onClick={() => removeVehicle(i)}
+            style={{ ...btnSmall, backgroundColor: '#1565c0', color: '#fff' }}
+            onClick={addVehicle}
           >
-            Remove
+            + Add Vehicle
+          </button>
+          <div>
+            <strong>VINs:</strong> {totalVINs}
+            <strong style={{ marginLeft: 12 }}>Logging:</strong> {lodgingCount}
+            <strong style={{ marginLeft: 12 }}>Suspended:</strong> {suspendedCount}
+          </div>
+        </div>
+
+        <h3>Total Tax: ${totalTax.toFixed(2)}</h3>
+
+        {/* Signature */}
+        <h2>Signature</h2>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <input name="signature" placeholder="Signature" value={formData.signature} onChange={handleChange} />
+          <input name="printed_name" placeholder="Printed Name" value={formData.printed_name} onChange={handleChange} />
+          <input
+            type="date"
+            name="signature_date"
+            value={formData.signature_date}
+            readOnly
+            disabled
+            style={{ background: "#eee", color: "#888" }}
+          />
+        </div>
+
+        {/* Payment Method */}
+        <h2 style={{ marginTop: 20 }}>Payment Method</h2>
+        <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', marginTop: 8 }}>
+          <label>
+            <input type="checkbox" name="payEFTPS" checked={formData.payEFTPS} onChange={handleChange} /> EFTPS
+          </label>
+          <label>
+            <input type="checkbox" name="payCard" checked={formData.payCard} onChange={handleChange} /> Credit/Debit Card
+          </label>
+        </div>
+        {formData.payEFTPS && (
+          <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <input name="eftps_routing" placeholder="Routing Number" value={formData.eftps_routing} onChange={handleChange} />
+            <input name="eftps_account" placeholder="Account Number" value={formData.eftps_account} onChange={handleChange} />
+          </div>
+        )}
+        {formData.payCard && (
+          <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <input name="card_holder" placeholder="Cardholder Name" value={formData.card_holder} onChange={handleChange} />
+            <input name="card_number" placeholder="Card Number" value={formData.card_number} onChange={handleChange} />
+            <input name="card_exp" placeholder="MM/YY" value={formData.card_exp} onChange={handleChange} />
+            <input name="card_cvv" placeholder="CVV" value={formData.card_cvv} onChange={handleChange} />
+          </div>
+        )}
+
+        {/* Actions */}
+        <div style={{ marginTop: 20, display: 'flex', gap: 12 }}>
+          <button
+            type="button"
+            style={{ ...btnSmall, backgroundColor: '#28a745', color: '#fff', fontSize: '1.1rem', padding: '12px 24px' }}
+            onClick={handleSubmit}
+          >
+          SUBMIT FORM 2290
           </button>
         </div>
-      ))}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-        <button
-          type="button"
-          style={{ ...btnSmall, backgroundColor: '#1565c0', color: '#fff' }}
-          onClick={addVehicle}
-        >
-          + Add Vehicle
-        </button>
-        <div>
-          <strong>VINs:</strong> {totalVINs}
-          <strong style={{ marginLeft: 12 }}>Logging:</strong> {lodgingCount}
-          <strong style={{ marginLeft: 12 }}>Suspended:</strong> {suspendedCount}
-        </div>
+
+        {/* --- Admin Section (add this after the logout button) --- */}
+        {auth.currentUser?.email === process.env.NEXT_PUBLIC_ADMIN_EMAIL && (
+          <AdminSubmissions />
+        )}
       </div>
-
-      <h3>Total Tax: ${totalTax.toFixed(2)}</h3>
-
-      {/* Signature */}
-      <h2>Signature</h2>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <input name="signature" placeholder="Signature" value={formData.signature} onChange={handleChange} />
-        <input name="printed_name" placeholder="Printed Name" value={formData.printed_name} onChange={handleChange} />
-        <input
-          type="date"
-          name="signature_date"
-          value={formData.signature_date}
-          readOnly
-          disabled
-          style={{ background: "#eee", color: "#888" }}
-        />
-      </div>
-
-      {/* Payment Method */}
-      <h2 style={{ marginTop: 20 }}>Payment Method</h2>
-      <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', marginTop: 8 }}>
-        <label>
-          <input type="checkbox" name="payEFTPS" checked={formData.payEFTPS} onChange={handleChange} /> EFTPS
-        </label>
-        <label>
-          <input type="checkbox" name="payCard" checked={formData.payCard} onChange={handleChange} /> Credit/Debit Card
-        </label>
-      </div>
-      {formData.payEFTPS && (
-        <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <input name="eftps_routing" placeholder="Routing Number" value={formData.eftps_routing} onChange={handleChange} />
-          <input name="eftps_account" placeholder="Account Number" value={formData.eftps_account} onChange={handleChange} />
-        </div>
-      )}
-      {formData.payCard && (
-        <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <input name="card_holder" placeholder="Cardholder Name" value={formData.card_holder} onChange={handleChange} />
-          <input name="card_number" placeholder="Card Number" value={formData.card_number} onChange={handleChange} />
-          <input name="card_exp" placeholder="MM/YY" value={formData.card_exp} onChange={handleChange} />
-          <input name="card_cvv" placeholder="CVV" value={formData.card_cvv} onChange={handleChange} />
-        </div>
-      )}
-
-      {/* Actions */}
-      <div style={{ marginTop: 20, display: 'flex', gap: 12 }}>
-        <button
-          type="button"
-          style={{ ...btnSmall, backgroundColor: '#28a745', color: '#fff', fontSize: '1.1rem', padding: '12px 24px' }}
-          onClick={handleSubmit}
-        >
-          🚀 SUBMIT FORM 2290
-        </button>
-      </div>
-
-      {/* --- Admin Section (add this after the logout button) --- */}
-      {auth.currentUser?.email === process.env.NEXT_PUBLIC_ADMIN_EMAIL && (
-        <AdminSubmissions />
-      )}
-    </div>
+    </>
   )
 }

@@ -1,3 +1,0 @@
-2025-07-01 08:24:22,761 - ADMIN_ACTION: INVALID_TOKEN_ATTEMPT | USER: UNKNOWN_USER | ENV: production | DETAILS: Invalid token: Token expired, 1751355979 < 1751358262
-2025-07-01 08:29:07,696 - ADMIN_ACTION: VIEW_ALL_SUBMISSIONS | USER: mmohsin@umich.edu | ENV: production | DETAILS: Retrieved 2 submissions
-2025-07-01 08:29:10,181 - ADMIN_ACTION: VIEW_ALL_SUBMISSIONS | USER: mmohsin@umich.edu | ENV: production | DETAILS: Retrieved 2 submissions

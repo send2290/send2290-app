@@ -4,22 +4,24 @@ import sys
 import os
 from dotenv import load_dotenv
 
-# Load environment variables
-load_dotenv()
+# Load environment variables from parent directory
+load_dotenv(dotenv_path="../.env")
 
-# Determine which environment we're hitting
-API_BASE = "https://send2290-app.onrender.com"  # Production
-# API_BASE = "http://localhost:5000"  # Uncomment for local
+# Production environment configuration
+API_BASE = "https://send2290-app.onrender.com"
 
-# Get admin token from environment variable
-ADMIN_TOKEN = os.getenv('ADMIN_TOKEN')
-if not ADMIN_TOKEN:
-    print("❌ Error: ADMIN_TOKEN not found in .env file")
-    print("Please add ADMIN_TOKEN=your_token_here to your .env file")
-    sys.exit(1)
+# Get production admin token from environment variable
+PRODUCTION_ADMIN_TOKEN = os.getenv('PRODUCTION_ADMIN_TOKEN')
+if not PRODUCTION_ADMIN_TOKEN:
+    # Fallback to legacy token for backward compatibility
+    PRODUCTION_ADMIN_TOKEN = os.getenv('ADMIN_TOKEN')
+    if not PRODUCTION_ADMIN_TOKEN:
+        print("❌ Error: PRODUCTION_ADMIN_TOKEN not found in .env file")
+        print("Please add PRODUCTION_ADMIN_TOKEN=your_production_token_here to your .env file")
+        sys.exit(1)
 
 headers = {
-    "Authorization": f"Bearer {ADMIN_TOKEN}"
+    "Authorization": f"Bearer {PRODUCTION_ADMIN_TOKEN}"
 }
 
 def get_environment():
@@ -79,22 +81,18 @@ def bulk_delete(ids):
         print(resp.text)
 
 def main():
-    parser = argparse.ArgumentParser(description="List and delete 2290 submissions (admin only)")
+    parser = argparse.ArgumentParser(description="List and delete 2290 submissions from PRODUCTION environment (admin only)")
     parser.add_argument('--list', action='store_true', help='List all submissions')
-    parser.add_argument('--env', choices=['local', 'prod'], help='Override environment (local/prod)')
     args = parser.parse_args()
 
-    # Override API_BASE if environment specified
-    global API_BASE
-    if args.env == 'local':
-        API_BASE = "http://localhost:5000"
-    elif args.env == 'prod':
-        API_BASE = "https://send2290-app.onrender.com"
+    print("🚀 PRODUCTION DELETION SCRIPT - Targeting send2290-app.onrender.com")
+    print("=" * 60)
 
     # Always list submissions first
     all_ids = list_submissions()
     print(f"\nEnter a submission ID to delete, or type 'all' to delete all submissions:")
     user_input = input('> ').strip()
+    
     if user_input.lower() == 'all':
         env = get_environment()
         confirm = input(f"⚠️  Are you sure you want to delete ALL ({len(all_ids)}) submissions from {env}? (yes/no): ").strip().lower()

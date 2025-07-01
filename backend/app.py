@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 from xml_builder import build_2290_xml
 import firebase_admin
 from firebase_admin import credentials, auth
-from enhanced_audit import IRS2290AuditLogger
+from Audit.enhanced_audit import IRS2290AuditLogger
 
 load_dotenv()
 
@@ -63,12 +63,12 @@ IS_PRODUCTION = os.getenv('RENDER') is not None or os.getenv('FLASK_ENV') == 'pr
 # Initialize the enhanced audit logger
 if IS_PRODUCTION:
     enhanced_audit = IRS2290AuditLogger('production')
-    audit_log_file = 'productionaudit.log'
-    print("🔥 PRODUCTION MODE: Using productionaudit.log")
+    audit_log_file = 'Audit/productionaudit.log'
+    print("🔥 PRODUCTION MODE: Using Audit/productionaudit.log")
 else:
     enhanced_audit = IRS2290AuditLogger('local')
-    audit_log_file = 'localaudit.log'
-    print("🛠️  LOCAL MODE: Using localaudit.log")
+    audit_log_file = 'Audit/localaudit.log'
+    print("🛠️  LOCAL MODE: Using Audit/localaudit.log")
 
 # Keep your existing basic audit logger but point it to the right file
 audit_logger = logging.getLogger('basic_audit')
@@ -107,6 +107,44 @@ def add_cors_headers(response):
     response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
     return response
 
+# API usage logging middleware
+@app.before_request
+def log_api_requests():
+    if request.method == "OPTIONS":
+        return
+    request.start_time = datetime.datetime.utcnow()
+
+@app.after_request
+def log_api_responses(response):
+    if request.method == "OPTIONS":
+        return response
+    
+    try:
+        # Calculate response time
+        response_time_ms = None
+        if hasattr(request, 'start_time'):
+            response_time = datetime.datetime.utcnow() - request.start_time
+            response_time_ms = int(response_time.total_seconds() * 1000)
+        
+        # Get user email if available
+        user_email = 'Anonymous'
+        if hasattr(request, 'user') and request.user:
+            user_email = request.user.get('email', 'Unknown')
+        
+        # Log API usage
+        audit_logger.log_api_usage(
+            user_email=user_email,
+            endpoint=request.endpoint or request.path,
+            method=request.method,
+            response_status=response.status_code,
+            response_time_ms=response_time_ms
+        )
+    except Exception as e:
+        # Don't let logging errors break the response
+        app.logger.error(f"API logging error: {e}")
+    
+    return response
+
 # Firebase Admin initialization
 try:
     if os.getenv("FLASK_ENV") == "development":
@@ -135,6 +173,21 @@ except Exception as e:
     print(f"❌ Firebase initialization error: {e}")
     raise
 
+# Initialize audit logger
+# Determine environment based on multiple indicators
+environment = 'local'  # default
+if os.getenv("FLASK_ENV") == "production":
+    environment = 'production'
+elif os.getenv("FLASK_ENV") != "development":
+    # If not explicitly development, check for AWS indicators
+    if os.getenv('DATABASE_URL') and not os.getenv('DATABASE_URL').startswith('sqlite'):
+        environment = 'production'
+    elif os.getenv('AWS_ACCESS_KEY_ID') and os.getenv('FILES_BUCKET'):
+        environment = 'production'
+
+print(f"🔍 Audit Logger Environment: {environment}")
+audit_logger = IRS2290AuditLogger(environment)
+
 s3 = boto3.client(
     's3',
     aws_access_key_id     = os.getenv('AWS_ACCESS_KEY_ID'),
@@ -151,12 +204,18 @@ def verify_firebase_token(f):
             return make_response("", 200)
         auth_header = request.headers.get('Authorization', '')
         if not auth_header.startswith('Bearer '):
+            audit_logger.log_security_event("MISSING_AUTH_HEADER", details="Authorization header missing or malformed")
             return jsonify({"error": "Authorization header missing or malformed"}), 401
         token = auth_header.split('Bearer ')[1]
         try:
             decoded = firebase_auth.verify_id_token(token)
             request.user = decoded
+            # Log successful authentication (token verification)
+            user_email = decoded.get('email', 'Unknown')
+            audit_logger.log_login_attempt(user_email, success=True)
         except Exception as e:
+            audit_logger.log_login_attempt("Unknown", success=False, failure_reason=str(e))
+            audit_logger.log_security_event("INVALID_TOKEN", details=f"Token verification failed: {str(e)}")
             return jsonify({"error": "Invalid or expired token", "details": str(e)}), 403
         return f(*args, **kwargs)
     return wrapper
@@ -171,6 +230,7 @@ def verify_admin_token(f):
         # First verify the Firebase token
         auth_header = request.headers.get('Authorization', '')
         if not auth_header.startswith('Bearer '):
+            audit_logger.log_security_event("ADMIN_ACCESS_NO_TOKEN", details="No valid Bearer token provided")
             log_admin_action("UNAUTHORIZED_ACCESS_ATTEMPT", "No valid Bearer token provided")
             return jsonify({'error': 'No token provided'}), 401
         
@@ -182,13 +242,19 @@ def verify_admin_token(f):
             admin_email = os.getenv('ADMIN_EMAIL', 'admin@send2290.com')  # Use environment variable
             admin_emails = [admin_email, 'admin@send2290.com']  # Fallback admin
             
-            if decoded_token.get('email') not in admin_emails:
-                log_admin_action("UNAUTHORIZED_ACCESS_ATTEMPT", f"Non-admin user {decoded_token.get('email')} attempted admin access")
+            user_email = decoded_token.get('email')
+            if user_email not in admin_emails:
+                audit_logger.log_security_event("UNAUTHORIZED_ADMIN_ACCESS", user_email, f"Non-admin user attempted admin access")
+                log_admin_action("UNAUTHORIZED_ACCESS_ATTEMPT", f"Non-admin user {user_email} attempted admin access")
                 return jsonify({'error': 'Admin access required'}), 403
-                
+            
+            # Log successful admin authentication
+            audit_logger.log_login_attempt(user_email, success=True)
+            audit_logger.log_security_event("ADMIN_ACCESS_GRANTED", user_email, f"Admin access granted to {user_email}")
             request.user = decoded_token
             return f(*args, **kwargs)
         except Exception as e:
+            audit_logger.log_security_event("ADMIN_INVALID_TOKEN", details=f"Invalid admin token: {str(e)}")
             log_admin_action("INVALID_TOKEN_ATTEMPT", f"Invalid token: {str(e)}")
             return jsonify({'error': 'Invalid token'}), 401
     return decorated
@@ -294,21 +360,33 @@ def generate_xml():
 
         db.commit()
         
-        # Add user action logging with better error handling
+        # Log form submissions for each month
+        user_email = request.user.get('email', 'Unknown')
+        total_vehicles = len(data.get('vehicles', []))
+        
+        for submission_data in created_submissions:
+            try:
+                audit_logger.log_form_submission(
+                    user_email=user_email,
+                    ein=data.get('ein'),
+                    tax_year=data.get('tax_year', '2025'),
+                    month=submission_data['month'],
+                    vehicle_count=submission_data['vehicle_count'],
+                    submission_id=submission_data['id']
+                )
+            except Exception as e:
+                app.logger.error(f"Form submission audit logging failed: {e}")
+        
+        # Log overall submission activity
         try:
-            enhanced_audit.log_user_action(
-                user_id=request.user['uid'],
-                action='FORM_SUBMISSION',
-                form_data=data,
-                ein=data.get('ein'),
-                tax_year=data.get('tax_year', '2025')
+            audit_logger.log_data_access(
+                user_email=user_email,
+                action='CREATE_SUBMISSION',
+                data_type='FORM_2290',
+                record_count=len(created_submissions)
             )
-            print(f"✅ User action logged for {request.user['uid']}")
         except Exception as e:
-            print(f"❌ User audit logging failed: {e}")
-            app.logger.error(f"User audit logging failed: {e}")
-            # Still log to basic logger as fallback
-            audit_logger.info(f"USER_SUBMISSION: {request.user['uid']} | EIN: {data.get('ein')} | VEHICLES: {len(data.get('vehicles', []))}")
+            app.logger.error(f"Data access audit logging failed: {e}")
     
     finally:
         db.close()
@@ -316,9 +394,25 @@ def generate_xml():
 @app.route("/download-xml", methods=["GET"])
 @verify_firebase_token
 def download_xml():
+    user_email = request.user.get('email', 'Unknown')
     xml_path = os.path.join(os.path.dirname(__file__), "form2290.xml")
+    
     if not os.path.exists(xml_path):
+        audit_logger.log_error_event(
+            user_email=user_email,
+            error_type='FILE_NOT_FOUND',
+            error_message='XML file not generated yet',
+            endpoint='/download-xml'
+        )
         return jsonify({"error": "XML not generated yet"}), 404
+    
+    # Log document access
+    audit_logger.log_document_access(
+        user_email=user_email,
+        action='DOWNLOAD',
+        document_type='XML'
+    )
+    
     return send_file(xml_path, mimetype="application/xml", as_attachment=True)
 
 @app.route('/download-pdf', methods=['POST'])
@@ -778,6 +872,8 @@ def admin_view_submissions():
     Admin endpoint to view all submissions with user information.
     IRS compliance: Only authorized personnel can access taxpayer data.
     """
+    user_email = request.user.get('email', 'Unknown')
+    
     try:
         db = SessionLocal()
         try:
@@ -785,6 +881,21 @@ def admin_view_submissions():
             submissions = db.query(Submission).order_by(Submission.created_at.desc()).all()
             
             print(f"🔍 ADMIN DEBUG: Found {len(submissions)} total submissions in database")
+            
+            # Log admin data access
+            audit_logger.log_data_access(
+                user_email=user_email,
+                action='VIEW_ALL_SUBMISSIONS',
+                data_type='SUBMISSIONS',
+                record_count=len(submissions)
+            )
+            
+            audit_logger.log_admin_action(
+                user_email=user_email,
+                action='VIEW_ALL_SUBMISSIONS',
+                details=f'Retrieved {len(submissions)} submissions'
+            )
+            
             for i, s in enumerate(submissions[:5]):  # Show first 5
                 print(f"  {i+1}. ID={s.id}, Month={s.month}, User={s.user_uid[:8]}..., Created={s.created_at}")
             
@@ -881,25 +992,62 @@ def admin_delete_submission(submission_id):
     Secure endpoint to delete test submissions and associated files.
     Includes S3 cleanup and proper audit logging.
     """
+    user_email = request.user.get('email', 'Unknown')
+    
+    # Log the deletion attempt
+    audit_logger.log_admin_action(
+        user_email=user_email,
+        action='DELETE_SUBMISSION_ATTEMPT',
+        details=f'Attempting to delete submission ID: {submission_id}'
+    )
     log_admin_action("DELETE_SUBMISSION", f"Attempting to delete submission ID: {submission_id}")
+    
     db = SessionLocal()
     try:
+        # Get submission details for logging before deletion
+        submission = db.query(Submission).get(submission_id)
+        if not submission:
+            audit_logger.log_error_event(
+                user_email=user_email,
+                error_type='SUBMISSION_NOT_FOUND',
+                error_message=f'Submission {submission_id} not found for deletion',
+                endpoint='/admin/submissions/delete'
+            )
+            log_admin_action("DELETE_ERROR", f"Submission {submission_id} not found for deletion")
+            return jsonify({"error": "Submission not found"}), 404
+        
+        # Extract EIN for logging
+        form_data = {}
+        if submission.form_data:
+            try:
+                form_data = json.loads(submission.form_data)
+            except:
+                pass
+        
+        ein = form_data.get('ein', 'Unknown')
+        
         # Delete related documents first
         docs = db.query(FilingsDocument).filter(FilingsDocument.filing_id == submission_id).all()
         for doc in docs:
             try:
                 s3.delete_object(Bucket=BUCKET, Key=doc.s3_key)
+                audit_logger.log_document_access(
+                    user_email=user_email,
+                    action='DELETE',
+                    document_type=doc.document_type.upper(),
+                    document_id=doc.id,
+                    ein=ein
+                )
                 log_admin_action("S3_DELETE", f"Deleted S3 object: {doc.s3_key}")
             except Exception as e:
+                audit_logger.log_error_event(
+                    user_email=user_email,
+                    error_type='S3_DELETE_FAILED',
+                    error_message=f'Failed to delete S3 object {doc.s3_key}: {str(e)}',
+                    endpoint='/admin/submissions/delete'
+                )
                 app.logger.warning(f"Failed to delete S3 object {doc.s3_key}: {e}")
             db.delete(doc)
-        
-        # Delete submission
-        submission = db.query(Submission).get(submission_id)
-        if not submission:
-            db.rollback()
-            log_admin_action("DELETE_ERROR", f"Submission {submission_id} not found for deletion")
-            return jsonify({"error": "Submission not found"}), 404
         
         # Delete S3 files
         if submission.xml_s3_key:
@@ -1108,11 +1256,21 @@ def debug_s3_test():
 def user_submissions():
     """Get all submissions for the current user"""
     user_uid = request.user['uid']
+    user_email = request.user.get('email', 'Unknown')
+    
     db = SessionLocal()
     try:
         submissions = db.query(Submission).filter(
             Submission.user_uid == user_uid
         ).order_by(Submission.created_at.desc()).all()
+        
+        # Log user data access
+        audit_logger.log_data_access(
+            user_email=user_email,
+            action='VIEW_USER_SUBMISSIONS',
+            data_type='USER_SUBMISSIONS',
+            record_count=len(submissions)
+        )
         
         submissions_list = []
         for submission in submissions:
@@ -1255,8 +1413,15 @@ def user_documents():
 def download_submission_file(submission_id, file_type):
     """Download PDF or XML file for a specific submission"""
     user_uid = request.user['uid']
+    user_email = request.user.get('email', 'Unknown')
     
     if file_type not in ['pdf', 'xml']:
+        audit_logger.log_error_event(
+            user_email=user_email,
+            error_type='INVALID_FILE_TYPE',
+            error_message=f'Invalid file type requested: {file_type}',
+            endpoint='/user/submissions/download'
+        )
         return jsonify({"error": "Invalid file type. Must be 'pdf' or 'xml'"}), 400
     
     db = SessionLocal()
@@ -1267,13 +1432,41 @@ def download_submission_file(submission_id, file_type):
         ).first()
         
         if not submission:
+            audit_logger.log_security_event(
+                'UNAUTHORIZED_FILE_ACCESS',
+                user_email,
+                f'User attempted to access submission {submission_id} not owned by them'
+            )
             return jsonify({"error": "Submission not found"}), 404
+        
+        # Get form data to extract EIN for logging
+        form_data = {}
+        if submission.form_data:
+            try:
+                form_data = json.loads(submission.form_data)
+            except:
+                pass
         
         # Get the appropriate S3 key
         s3_key = submission.pdf_s3_key if file_type == 'pdf' else submission.xml_s3_key
         
         if not s3_key:
+            audit_logger.log_error_event(
+                user_email=user_email,
+                error_type='FILE_NOT_FOUND',
+                error_message=f'{file_type.upper()} file not found for submission {submission_id}',
+                endpoint='/user/submissions/download'
+            )
             return jsonify({"error": f"{file_type.upper()} file not found for this submission"}), 404
+        
+        # Log document access
+        audit_logger.log_document_access(
+            user_email=user_email,
+            action='DOWNLOAD',
+            document_type=file_type.upper(),
+            document_id=submission_id,
+            ein=form_data.get('ein')
+        )
         
         # Generate presigned URL for download
         try:
@@ -1365,9 +1558,9 @@ def get_audit_logs(log_type):
     """Get audit logs for specific environment"""
     try:
         if log_type == 'local':
-            filename = 'localaudit.log'
+            filename = os.path.join('Audit', 'localaudit.log')
         elif log_type == 'production':
-            filename = 'productionaudit.log'
+            filename = os.path.join('Audit', 'productionaudit.log')
         else:
             return jsonify({"error": "Invalid log type. Use 'local' or 'production'"}), 400
         
