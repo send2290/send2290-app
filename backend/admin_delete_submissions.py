@@ -2,12 +2,21 @@ import requests
 import argparse
 import sys
 import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Determine which environment we're hitting
 API_BASE = "https://send2290-app.onrender.com"  # Production
 # API_BASE = "http://localhost:5000"  # Uncomment for local
 
-ADMIN_TOKEN = "eyJhbGciOiJSUzI1NiIsImtpZCI6Ijg3NzQ4NTAwMmYwNWJlMDI2N2VmNDU5ZjViNTEzNTMzYjVjNThjMTIiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJodHRwczovL3NlY3VyZXRva2VuLmdvb2dsZS5jb20vc2VuZDIyOTAtNmMxYTUiLCJhdWQiOiJzZW5kMjI5MC02YzFhNSIsImF1dGhfdGltZSI6MTc1MTAwODg3NSwidXNlcl9pZCI6IjEySDQ3TmxwSnBmVHZ3TThqdThnYzVmSHhLRjIiLCJzdWIiOiIxMkg0N05scEpwZlR2d004anU4Z2M1Zkh4S0YyIiwiaWF0IjoxNzUxMzUyMzc5LCJleHAiOjE3NTEzNTU5NzksImVtYWlsIjoibW1vaHNpbkB1bWljaC5lZHUiLCJlbWFpbF92ZXJpZmllZCI6ZmFsc2UsImZpcmViYXNlIjp7ImlkZW50aXRpZXMiOnsiZW1haWwiOlsibW1vaHNpbkB1bWljaC5lZHUiXX0sInNpZ25faW5fcHJvdmlkZXIiOiJwYXNzd29yZCJ9fQ.l_5IzC7Pz2cAM4vkDsHvjfEiuOGHPwtfOiYGwrtxgc9aTU9-s74NM2IRC6APiZsAZj3o1Lm469VOPA3SxHrYmT7Xe5k3m2WRJSuH4NGZ5o617UC8QKkGOTA8dvTfG_xzLuBpe4SPGAI8uxFkXzaxSKUkAildpUKwSPaG6sVZjsopxlQilJDpVO-_9VeCSQC6YPQv91uagrlJfh9r9QWWLMVQXOfgal1PTJjk5sAE8QRGacEy-W5DPZlDuzQ_jjORXOfSzpbZaofJ6FqPv1OcBefPXxdetN6qxq2-vTJ5i-qI4JG0xK5hGUQzVu9280eM8_pzUNTVdv5TxieUlnrGQQ"
+# Get admin token from environment variable
+ADMIN_TOKEN = os.getenv('ADMIN_TOKEN')
+if not ADMIN_TOKEN:
+    print("❌ Error: ADMIN_TOKEN not found in .env file")
+    print("Please add ADMIN_TOKEN=your_token_here to your .env file")
+    sys.exit(1)
 
 headers = {
     "Authorization": f"Bearer {ADMIN_TOKEN}"
