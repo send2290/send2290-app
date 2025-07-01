@@ -18,6 +18,7 @@ from dotenv import load_dotenv
 from xml_builder import build_2290_xml
 import firebase_admin
 from firebase_admin import credentials, auth
+from enhanced_audit import IRS2290AuditLogger
 
 load_dotenv()
 
@@ -56,17 +57,33 @@ class FilingsDocument(Base):
 
 Base.metadata.create_all(bind=engine)
 
-# Set up audit logging for IRS compliance
-audit_logger = logging.getLogger('audit')
-audit_handler = logging.FileHandler('audit.log')
-audit_handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
-audit_logger.addHandler(audit_handler)
-audit_logger.setLevel(logging.INFO)
+# Simple environment detection
+IS_PRODUCTION = os.getenv('RENDER') is not None or os.getenv('FLASK_ENV') == 'production'
+
+# Initialize the enhanced audit logger
+if IS_PRODUCTION:
+    enhanced_audit = IRS2290AuditLogger('production')
+    audit_log_file = 'productionaudit.log'
+    print("🔥 PRODUCTION MODE: Using productionaudit.log")
+else:
+    enhanced_audit = IRS2290AuditLogger('local')
+    audit_log_file = 'localaudit.log'
+    print("🛠️  LOCAL MODE: Using localaudit.log")
+
+# Keep your existing basic audit logger but point it to the right file
+audit_logger = logging.getLogger('basic_audit')
+if not audit_logger.handlers:
+    audit_handler = logging.FileHandler(audit_log_file)
+    audit_handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
+    audit_logger.addHandler(audit_handler)
+    audit_logger.setLevel(logging.INFO)
 
 def log_admin_action(action, details):
-    """Log admin actions for IRS audit trail compliance"""
+    """Enhanced admin action logging - single entry"""
     user_email = getattr(request, 'user', {}).get('email', 'UNKNOWN_USER')
-    audit_logger.info(f"ADMIN_ACTION: {action} | USER: {user_email} | DETAILS: {details}")
+    
+    # Use only enhanced logger to avoid duplicates
+    enhanced_audit.log_admin_action(user_email, action, details)
 
 app = Flask(__name__)
 CORS(
@@ -185,6 +202,7 @@ def index():
 def protected():
     return jsonify({"message": f"Hello, {request.user.get('email')}!"}), 200
 
+# Add user logging to build-xml endpoint
 @app.route("/build-xml", methods=["POST", "OPTIONS"])
 @verify_firebase_token
 def generate_xml():
@@ -276,12 +294,22 @@ def generate_xml():
 
         db.commit()
         
-        return jsonify({
-            "message": f"✅ {len(created_submissions)} XML files generated for different months",
-            "submissions": created_submissions,
-            "xmls": generated_xmls
-        }), 200
-        
+        # Add user action logging with better error handling
+        try:
+            enhanced_audit.log_user_action(
+                user_id=request.user['uid'],
+                action='FORM_SUBMISSION',
+                form_data=data,
+                ein=data.get('ein'),
+                tax_year=data.get('tax_year', '2025')
+            )
+            print(f"✅ User action logged for {request.user['uid']}")
+        except Exception as e:
+            print(f"❌ User audit logging failed: {e}")
+            app.logger.error(f"User audit logging failed: {e}")
+            # Still log to basic logger as fallback
+            audit_logger.info(f"USER_SUBMISSION: {request.user['uid']} | EIN: {data.get('ein')} | VEHICLES: {len(data.get('vehicles', []))}")
+    
     finally:
         db.close()
 
@@ -853,14 +881,12 @@ def admin_delete_submission(submission_id):
     Secure endpoint to delete test submissions and associated files.
     Includes S3 cleanup and proper audit logging.
     """
-    log_admin_action("DELETE_SUBMISSION", f"Deleted submission ID: {submission_id}")
-    
+    log_admin_action("DELETE_SUBMISSION", f"Attempting to delete submission ID: {submission_id}")
     db = SessionLocal()
     try:
         # Delete related documents first
         docs = db.query(FilingsDocument).filter(FilingsDocument.filing_id == submission_id).all()
         for doc in docs:
-            # Delete from S3
             try:
                 s3.delete_object(Bucket=BUCKET, Key=doc.s3_key)
                 log_admin_action("S3_DELETE", f"Deleted S3 object: {doc.s3_key}")
@@ -871,6 +897,8 @@ def admin_delete_submission(submission_id):
         # Delete submission
         submission = db.query(Submission).get(submission_id)
         if not submission:
+            db.rollback()
+            log_admin_action("DELETE_ERROR", f"Submission {submission_id} not found for deletion")
             return jsonify({"error": "Submission not found"}), 404
         
         # Delete S3 files
@@ -890,7 +918,7 @@ def admin_delete_submission(submission_id):
         
         db.delete(submission)
         db.commit()
-        
+        log_admin_action("DELETE_SUCCESS", f"Submission {submission_id} deleted from database")
         return jsonify({"message": f"Submission {submission_id} deleted successfully"}), 200
     except Exception as e:
         db.rollback()
@@ -1175,7 +1203,7 @@ def user_documents():
     user_uid = request.user['uid']
     db = SessionLocal()
     try:
-        # Query to fetch user's submissions and associated documents
+        # Query to fetch user's submissions and associated documents, but only for submissions that still exist
         rows = db.execute(
             text("""
                 SELECT s.id, s.month, s.created_at, d.document_type, d.s3_key
@@ -1198,7 +1226,6 @@ def user_documents():
                 },
                 ExpiresIn=900
             )
-            
             if submission_id not in submissions:
                 submissions[submission_id] = {
                     "id": submission_id,
@@ -1206,12 +1233,13 @@ def user_documents():
                     "created_at": str(created_at),
                     "documents": []
                 }
-            
             submissions[submission_id]["documents"].append({
                 "type": doc_type,
                 "url": url
             })
 
+        # Only return submissions that still exist in the submissions table
+        # (The above query already does this, but if you ever soft-delete, filter here)
         return jsonify({
             "count": len(submissions),
             "submissions": list(submissions.values())
@@ -1331,6 +1359,54 @@ def test_connection():
         "timestamp": datetime.datetime.utcnow().isoformat()
     }), 200
 
+@app.route("/admin/audit-logs/<log_type>", methods=["GET"])
+@verify_admin_token
+def get_audit_logs(log_type):
+    """Get audit logs for specific environment"""
+    try:
+        if log_type == 'local':
+            filename = 'localaudit.log'
+        elif log_type == 'production':
+            filename = 'productionaudit.log'
+        else:
+            return jsonify({"error": "Invalid log type. Use 'local' or 'production'"}), 400
+        
+        if not os.path.exists(filename):
+            return jsonify({"error": f"Log file {filename} not found"}), 404
+            
+        with open(filename, 'r') as f:
+            lines = f.readlines()
+            recent_lines = lines[-100:]  # Last 100 entries
+        
+        return jsonify({
+            "environment": log_type,
+            "logs": recent_lines,
+            "total_lines": len(lines),
+            "showing_last": len(recent_lines),
+            "filename": filename
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/admin/audit-logs/<log_type>/download", methods=["GET"])
+@verify_admin_token
+def download_audit_logs(log_type):
+    """Download complete audit log file"""
+    try:
+        if log_type == 'local':
+            filename = 'localaudit.log'
+        elif log_type == 'production':
+            filename = 'productionaudit.log'
+        else:
+            return jsonify({"error": "Invalid log type"}), 400
+        
+        if not os.path.exists(filename):
+            return jsonify({"error": f"Log file {filename} not found"}), 404
+            
+        return send_file(filename, as_attachment=True, download_name=f'{log_type}_audit_{datetime.now().strftime("%Y%m%d")}.log')
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 if __name__ == "__main__":
     print("🔥 Starting Flask development server...")
     print(f"🔧 Flask ENV: {os.getenv('FLASK_ENV', 'development')}")
@@ -1339,16 +1415,9 @@ if __name__ == "__main__":
     # Test database connection
     try:
         with engine.connect() as conn:
-            result = conn.execute(text("SELECT 1"))
             print("✅ Database connection successful")
     except Exception as e:
-        print(f"❌ Database connection failed: {e}")
-        print("💡 Check AWS RDS security group settings")
-        
-    print(f"🪣 S3 Bucket: {BUCKET}")
-    print(f"👨‍💼 Admin Email: {os.getenv('ADMIN_EMAIL')}")
+        print(f"❌ Database connection error: {e}")
+        raise
     
-    try:
-        app.run(host="0.0.0.0", port=5000, debug=True)
-    except Exception as e:
-        print(f"❌ Failed to start server: {e}")
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)), debug=True)
