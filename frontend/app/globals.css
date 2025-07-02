@@ -32,6 +32,49 @@ body {
   min-height: 100vh;
 }
 
+/* Force light styling for all form elements */
+input, select, textarea, button {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  border: 1px solid #ccc !important;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+}
+
+/* Specific styling for different input types */
+input[type="text"],
+input[type="email"],
+input[type="date"],
+input[type="tel"],
+select,
+textarea {
+  background: #ffffff !important;
+  color: #000000 !important;
+  border: 1px solid #ddd !important;
+  padding: 8px !important;
+  border-radius: 4px !important;
+}
+
+/* Button styling */
+button {
+  background: #007cba !important;
+  color: #ffffff !important;
+  border: none !important;
+  padding: 8px 16px !important;
+  border-radius: 4px !important;
+  cursor: pointer !important;
+}
+
+/* Checkbox and radio button styling */
+input[type="checkbox"],
+input[type="radio"] {
+  background: #ffffff !important;
+  border: 2px solid #ccc !important;
+  width: 16px !important;
+  height: 16px !important;
+}
+
 /* Mobile-specific fixes */
 @media (max-width: 768px) {
   body {
@@ -40,7 +83,16 @@ body {
   }
   
   input, select, textarea {
-    font-size: 16px; /* Prevent zoom on iOS */
+    font-size: 16px !important; /* Prevent zoom on iOS */
+    background: #ffffff !important;
+    color: #000000 !important;
+    border: 1px solid #ddd !important;
+  }
+  
+  button {
+    font-size: 16px !important;
+    background: #007cba !important;
+    color: #ffffff !important;
   }
 }
 
@@ -53,10 +105,4 @@ body {
 a {
   color: inherit;
   text-decoration: none;
-}
-
-@media (prefers-color-scheme: dark) {
-  html {
-    color-scheme: dark;
-  }
 }
