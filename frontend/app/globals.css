@@ -32,14 +32,37 @@ body {
   min-height: 100vh;
 }
 
-/* Force light styling for all form elements */
-input, select, textarea, button {
+/* Force light styling for most form elements */
+input:not([type="checkbox"]):not([type="radio"]), 
+select, 
+textarea, 
+button {
   background-color: #ffffff !important;
   color: #000000 !important;
   border: 1px solid #ccc !important;
   -webkit-appearance: none;
   -moz-appearance: none;
   appearance: none;
+}
+
+/* Preserve native appearance for checkboxes and radio buttons */
+input[type="checkbox"],
+input[type="radio"] {
+  -webkit-appearance: checkbox !important;
+  -moz-appearance: checkbox !important;
+  appearance: checkbox !important;
+  background-color: #ffffff !important;
+  border: 1px solid #666 !important;
+  width: 16px !important;
+  height: 16px !important;
+  cursor: pointer !important;
+}
+
+input[type="radio"] {
+  -webkit-appearance: radio !important;
+  -moz-appearance: radio !important;
+  appearance: radio !important;
+  border-radius: 50% !important;
 }
 
 /* Specific styling for different input types */

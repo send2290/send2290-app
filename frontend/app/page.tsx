@@ -76,12 +76,14 @@ export default function Form2290() {
   // Always get today's date in America/New_York (Eastern) as YYYY-MM-DD
   const easternToday = DateTime.now().setZone("America/New_York").toISODate();
 
-  // Form state (added `email`)
+  // Form state (added `email` and missing IRS compliance fields)
   const [formData, setFormData] = useState({
     email:             '',
     business_name:     '',
+    business_name_line2: '', // Optional second line for business name
     ein:               '',
     address:           '',
+    address_line2:     '', // Optional second line for address (max 35 chars each line)
     city:              '',
     state:             '',
     zip:               '',
@@ -91,6 +93,11 @@ export default function Form2290() {
     amended_return:    false,
     vin_correction:    false,
     final_return:      false,
+    // Business Officer Information (required for signing)
+    officer_name:      '', // Person who signs the return
+    officer_title:     '', // Title (President, Owner, Manager, etc.)
+    taxpayer_pin:      '', // 5-digit PIN for electronic signature
+    tax_credits:       0,  // Tax credits to apply against liability
     include_preparer:  false,
     preparer_name:           '',
     preparer_ptin:           '',
@@ -325,6 +332,19 @@ export default function Form2290() {
     
     if (!formData.business_name.trim()) return 'Business Name is required'
     if (!/^\d{9}$/.test(formData.ein))     return 'EIN must be 9 digits'
+    
+    // Address length validation (IRS requirement: max 35 chars per line)
+    if (formData.address.length > 35) return 'Address line 1 cannot exceed 35 characters'
+    if (formData.address_line2 && formData.address_line2.length > 35) return 'Address line 2 cannot exceed 35 characters'
+    
+    // Business officer information validation
+    if (!formData.officer_name.trim()) return 'Officer name is required for signing'
+    if (!formData.officer_title.trim()) return 'Officer title is required (e.g., President, Owner, Manager)'
+    if (!/^\d{5}$/.test(formData.taxpayer_pin)) return 'Taxpayer PIN must be exactly 5 digits'
+    
+    // Tax credits validation (if provided)
+    if (formData.tax_credits < 0) return 'Tax credits cannot be negative'
+    
     if (formData.include_preparer) {
       if (!formData.preparer_name.trim())      return 'Preparer Name is required'
       if (!formData.preparer_ptin.trim())      return 'Preparer PTIN is required'
@@ -854,6 +874,51 @@ export default function Form2290() {
           padding: 20px;
           font-family: 'Segoe UI', sans-serif;
         }
+        
+        /* Checkbox styling for all screen sizes */
+        .form-container input[type="checkbox"] {
+          width: 16px !important;
+          height: 16px !important;
+          min-width: 16px !important;
+          margin-right: 8px;
+          cursor: pointer;
+          accent-color: #007bff;
+          pointer-events: auto;
+          position: relative;
+          z-index: 1;
+          -webkit-appearance: checkbox !important;
+          -moz-appearance: checkbox !important;
+          appearance: checkbox !important;
+          background: white !important;
+          border: 1px solid #666 !important;
+          padding: 0 !important;
+          font-size: inherit !important;
+          line-height: normal !important;
+          display: inline-block !important;
+          vertical-align: middle !important;
+          transform: none !important;
+        }
+        
+        .form-container input[type="checkbox"]:focus {
+          outline: 2px solid #007bff !important;
+          outline-offset: 2px !important;
+        }
+        
+        .form-container label {
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          user-select: none;
+          pointer-events: auto;
+          position: relative;
+        }
+        
+        /* Ensure checkbox labels have proper spacing and hover effects */
+        .form-container label:hover {
+          opacity: 0.8;
+        }
+        
         @media (max-width: 600px) {
           .form-container {
             max-width: 100vw;
@@ -864,7 +929,7 @@ export default function Form2290() {
             align-items: stretch !important;
             gap: 6px !important;
           }
-          .vehicle-row input,
+          .vehicle-row input:not([type="checkbox"]),
           .vehicle-row select,
           .vehicle-row button {
             width: 100% !important;
@@ -878,7 +943,7 @@ export default function Form2290() {
           .vehicle-row {
             margin-bottom: 18px !important;
           }
-          .form-container input,
+          .form-container input:not([type="checkbox"]),
           .form-container select {
             width: 100% !important;
             min-width: 0 !important;
@@ -892,6 +957,20 @@ export default function Form2290() {
             transform: scale(0.85);
             transform-origin: 0 0;
             margin-bottom: 10px;
+          }
+          
+          /* Enhanced mobile checkbox styling */
+          .form-container input[type="checkbox"] {
+            width: 20px !important;
+            height: 20px !important;
+            min-width: 20px !important;
+            margin-right: 12px;
+          }
+          
+          /* Better spacing for checkbox labels on mobile */
+          .form-container label {
+            padding: 8px 0;
+            min-height: 44px; /* Touch-friendly minimum height */
           }
         }
       `}</style>
@@ -930,7 +1009,14 @@ export default function Form2290() {
               </span>
             )}
           </div>
-          <input name="business_name" placeholder="Name" value={formData.business_name} onChange={handleChange} />
+          <input name="business_name" placeholder="Business Name (Line 1)" value={formData.business_name} onChange={handleChange} maxLength={60} />
+          <input 
+            name="business_name_line2" 
+            placeholder="Business Name (Line 2 - Optional)" 
+            value={formData.business_name_line2} 
+            onChange={handleChange} 
+            maxLength={60}
+          />
           <input
             name="ein"
             placeholder="EIN"
@@ -941,9 +1027,24 @@ export default function Form2290() {
             value={formData.ein}
             onChange={handleChange}
           />
-          <input name="address" placeholder="Address" value={formData.address} onChange={handleChange} />
+          <input 
+            name="address" 
+            placeholder="Address (Line 1 - Max 35 chars)" 
+            value={formData.address} 
+            onChange={handleChange} 
+            maxLength={35}
+            title="Maximum 35 characters per IRS requirements"
+          />
+          <input 
+            name="address_line2" 
+            placeholder="Address (Line 2 - Optional, Max 35 chars)" 
+            value={formData.address_line2} 
+            onChange={handleChange} 
+            maxLength={35}
+            title="Maximum 35 characters per IRS requirements"
+          />
           <input name="city" placeholder="City" value={formData.city} onChange={handleChange} />
-          <input name="state" placeholder="State" value={formData.state} onChange={handleChange} />
+          <input name="state" placeholder="State (2 letters)" value={formData.state} onChange={handleChange} maxLength={2} />
           <input
             name="zip"
             placeholder="ZIP"
@@ -959,23 +1060,82 @@ export default function Form2290() {
         {/* Return Flags */}
         <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', marginTop: 12 }}>
           {['address_change','amended_return','vin_correction','final_return'].map(flag => (
-            <label key={flag} style={labelSmall}>
-              <input type="checkbox" name={flag} checked={(formData as any)[flag]} onChange={handleChange} />
-              {flag.replace(/_/g,' ')}
+            <label key={flag} style={{ ...labelSmall, cursor: 'pointer' }}>
+              <input 
+                type="checkbox" 
+                name={flag} 
+                checked={(formData as any)[flag]} 
+                onChange={handleChange}
+                style={{ cursor: 'pointer' }}
+              />
+              <span style={{ cursor: 'pointer' }}>
+                {flag.replace(/_/g,' ')}
+              </span>
             </label>
           ))}
         </div>
 
+        {/* Business Officer Information & Tax Credits */}
+        <h2 style={{ marginTop: 20 }}>Business Officer Information</h2>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <input 
+            name="officer_name" 
+            placeholder="Officer Name (Required for signing)" 
+            value={formData.officer_name} 
+            onChange={handleChange} 
+            required
+            title="Name of the person authorized to sign this return"
+          />
+          <input 
+            name="officer_title" 
+            placeholder="Officer Title (e.g., President, Owner, Manager)" 
+            value={formData.officer_title} 
+            onChange={handleChange} 
+            required
+            title="Title of the person signing this return"
+          />
+          <input 
+            name="taxpayer_pin" 
+            placeholder="Taxpayer PIN (5 digits)" 
+            pattern="\d{5}"
+            maxLength={5}
+            inputMode="numeric"
+            title="5-digit PIN for electronic signature"
+            value={formData.taxpayer_pin} 
+            onChange={handleChange} 
+            required
+          />
+        </div>
+        
+        {/* Tax Credits */}
+        <h2 style={{ marginTop: 20 }}>Tax Credits (Optional)</h2>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <input 
+            name="tax_credits" 
+            type="number"
+            min="0"
+            step="0.01"
+            placeholder="Tax Credits Amount"
+            value={formData.tax_credits || ''} 
+            onChange={handleChange}
+            title="Amount of tax credits to apply against tax liability"
+          />
+          <span style={{ fontSize: '0.9rem', color: '#666', fontStyle: 'italic' }}>
+            Enter any tax credits to be applied against your tax liability
+          </span>
+        </div>
+
         {/* Paid Preparer */}
         <h2 style={{ marginTop: 20 }}>
-          <label style={labelSmall}>
+          <label style={{ ...labelSmall, cursor: 'pointer' }}>
             <input
               type="checkbox"
               name="include_preparer"
               checked={formData.include_preparer}
               onChange={handleChange}
+              style={{ cursor: 'pointer' }}
             />
-            Include Paid Preparer
+            <span style={{ cursor: 'pointer' }}>Include Paid Preparer</span>
           </label>
         </h2>
         {formData.include_preparer && (
@@ -1024,9 +1184,15 @@ export default function Form2290() {
 
         {/* Third-Party Designee / Consent */}
         <h2 style={{ marginTop: 20 }}>
-          <label style={labelSmall}>
-            <input type="checkbox" name="consent_to_disclose" checked={formData.consent_to_disclose} onChange={handleChange} />
-            Consent to Disclose
+          <label style={{ ...labelSmall, cursor: 'pointer' }}>
+            <input 
+              type="checkbox" 
+              name="consent_to_disclose" 
+              checked={formData.consent_to_disclose} 
+              onChange={handleChange}
+              style={{ cursor: 'pointer' }}
+            />
+            <span style={{ cursor: 'pointer' }}>Consent to Disclose</span>
           </label>
         </h2>
         {formData.consent_to_disclose && (
@@ -1085,14 +1251,35 @@ export default function Form2290() {
                 <option key={w.value} value={w.value}>{w.label}</option>
               ))}
             </select>
-            <label style={labelSmall}>
-              Logging? <input type="checkbox" name={`vehicle_${i}_is_logging`} checked={v.is_logging} onChange={handleChange} />
+            <label style={{ ...labelSmall, cursor: 'pointer' }}>
+              <span style={{ cursor: 'pointer' }}>Logging?</span>
+              <input 
+                type="checkbox" 
+                name={`vehicle_${i}_is_logging`} 
+                checked={v.is_logging} 
+                onChange={handleChange}
+                style={{ cursor: 'pointer' }}
+              />
             </label>
-            <label style={labelSmall}>
-              Agricultural ≤7,000 mi <input type="checkbox" name={`vehicle_${i}_is_agricultural`} checked={v.is_agricultural} onChange={handleChange} />
+            <label style={{ ...labelSmall, cursor: 'pointer' }}>
+              <span style={{ cursor: 'pointer' }}>Agricultural ≤7,000 mi</span>
+              <input 
+                type="checkbox" 
+                name={`vehicle_${i}_is_agricultural`} 
+                checked={v.is_agricultural} 
+                onChange={handleChange}
+                style={{ cursor: 'pointer' }}
+              />
             </label>
-            <label style={labelSmall}>
-              Non-Agricultural ≤5,000 mi <input type="checkbox" name={`vehicle_${i}_is_suspended`} checked={v.is_suspended} onChange={handleChange} />
+            <label style={{ ...labelSmall, cursor: 'pointer' }}>
+              <span style={{ cursor: 'pointer' }}>Non-Agricultural ≤5,000 mi</span>
+              <input 
+                type="checkbox" 
+                name={`vehicle_${i}_is_suspended`} 
+                checked={v.is_suspended} 
+                onChange={handleChange}
+                style={{ cursor: 'pointer' }}
+              />
             </label>
             <button
               type="button"
@@ -1138,11 +1325,25 @@ export default function Form2290() {
         {/* Payment Method */}
         <h2 style={{ marginTop: 20 }}>Payment Method</h2>
         <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', marginTop: 8 }}>
-          <label>
-            <input type="checkbox" name="payEFTPS" checked={formData.payEFTPS} onChange={handleChange} /> EFTPS
+          <label style={{ ...labelSmall, cursor: 'pointer' }}>
+            <input 
+              type="checkbox" 
+              name="payEFTPS" 
+              checked={formData.payEFTPS} 
+              onChange={handleChange}
+              style={{ cursor: 'pointer' }}
+            />
+            <span style={{ cursor: 'pointer' }}>EFTPS</span>
           </label>
-          <label>
-            <input type="checkbox" name="payCard" checked={formData.payCard} onChange={handleChange} /> Credit/Debit Card
+          <label style={{ ...labelSmall, cursor: 'pointer' }}>
+            <input 
+              type="checkbox" 
+              name="payCard" 
+              checked={formData.payCard} 
+              onChange={handleChange}
+              style={{ cursor: 'pointer' }}
+            />
+            <span style={{ cursor: 'pointer' }}>Credit/Debit Card</span>
           </label>
         </div>
         {formData.payEFTPS && (
