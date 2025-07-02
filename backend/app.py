@@ -196,6 +196,17 @@ s3 = boto3.client(
     config=botocore.client.Config(signature_version='s3v4')
 )
 BUCKET = os.getenv('FILES_BUCKET')
+print(f"🪣 S3 Bucket configured: {BUCKET}")
+if not BUCKET:
+    print("❌ WARNING: FILES_BUCKET environment variable is not set!")
+    print("📋 Available environment variables:")
+    for key in sorted(os.environ.keys()):
+        if any(keyword in key.upper() for keyword in ['AWS', 'BUCKET', 'S3', 'FILE']):
+            value = os.environ[key]
+            # Hide sensitive values
+            display_value = value[:10] + '...' if len(value) > 10 else value
+            print(f"   {key} = {display_value}")
+    raise RuntimeError("FILES_BUCKET environment variable is required!")
 
 def verify_firebase_token(f):
     @wraps(f)
@@ -1257,6 +1268,25 @@ def debug_s3_test():
             "accessible": False,
             "error": str(e)
         }), 500
+
+@app.route("/debug/env-check", methods=["GET"])
+@verify_admin_token
+def debug_env_check():
+    """Check environment variables (admin only)"""
+    env_vars = {}
+    for key in ['FILES_BUCKET', 'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'AWS_DEFAULT_REGION', 'DATABASE_URL']:
+        value = os.getenv(key)
+        if value:
+            # Show first 10 characters for security
+            env_vars[key] = value[:10] + '...' if len(value) > 10 else value
+        else:
+            env_vars[key] = None
+    
+    return jsonify({
+        "environment_variables": env_vars,
+        "bucket_configured": BUCKET is not None,
+        "current_bucket": BUCKET
+    })
 
 @app.route("/user/submissions", methods=["GET"])
 @verify_firebase_token
