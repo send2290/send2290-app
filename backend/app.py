@@ -314,12 +314,24 @@ def generate_xml():
             if isinstance(xml_data, bytes):
                 xml_data = xml_data.decode('utf-8', errors='ignore')
 
+            # Create submission record first to get ID for new folder structure
+            submission = Submission(
+                user_uid=request.user['uid'],
+                month=month,
+                form_data=json.dumps(month_data)
+            )
+            db.add(submission)
+            db.commit()
+            db.refresh(submission)
+
+            # Use submission ID for S3 folder structure
+            xml_key = f"submission_{submission.id}/form2290.xml"
+            
             # Save XML file with month identifier
             xml_path = os.path.join(os.path.dirname(__file__), f"form2290_{month}.xml")
             with open(xml_path, "w", encoding="utf-8") as f:
                 f.write(xml_data)
 
-            xml_key = f"{request.user['uid']}/{month}/form2290.xml"
             try:
                 with open(xml_path, 'rb') as xml_file:
                     s3.put_object(
@@ -328,19 +340,13 @@ def generate_xml():
                         Body=xml_file,
                         ServerSideEncryption='aws:kms'
                     )
+                
+                # Update submission with S3 key after successful upload
+                submission.xml_s3_key = xml_key
+                db.commit()
+                
             except Exception as e:
                 app.logger.error("S3 XML upload failed for month %s: %s", month, e, exc_info=True)
-
-            # Create submission record for this month
-            submission = Submission(
-                user_uid=request.user['uid'],
-                month=month,
-                xml_s3_key=xml_key,
-                form_data=json.dumps(month_data)
-            )
-            db.add(submission)
-            db.commit()
-            db.refresh(submission)
 
             db.add(FilingsDocument(
                 filing_id=submission.id,
@@ -633,7 +639,19 @@ def build_pdf():
             if isinstance(xml_data, bytes):
                 xml_data = xml_data.decode('utf-8', errors='ignore')
 
-            xml_key = f"{user_uid}/{month}/form2290.xml"
+            # Create submission record first to get ID for new folder structure
+            submission = Submission(
+                user_uid=user_uid,
+                month=month,
+                form_data=json.dumps(month_data)
+            )
+            db.add(submission)
+            db.commit()
+            db.refresh(submission)
+            filing_id = submission.id
+
+            # Use submission ID for S3 folder structure
+            xml_key = f"submission_{filing_id}/form2290.xml"
             xml_path = os.path.join(os.path.dirname(__file__), f"form2290_{month}.xml")
             with open(xml_path, "w", encoding="utf-8") as f:
                 f.write(xml_data)
@@ -647,20 +665,13 @@ def build_pdf():
                         Body=xml_file,
                         ServerSideEncryption='aws:kms'
                     )
+                
+                # Update submission with S3 key after successful upload
+                submission.xml_s3_key = xml_key
+                db.commit()
+                
             except Exception as e:
                 app.logger.error("S3 XML upload failed for month %s: %s", month, e, exc_info=True)
-
-            # Create submission record
-            submission = Submission(
-                user_uid=user_uid,
-                month=month,
-                xml_s3_key=xml_key,
-                form_data=json.dumps(month_data)
-            )
-            db.add(submission)
-            db.commit()
-            db.refresh(submission)
-            filing_id = submission.id
 
             # Add XML document record
             db.add(FilingsDocument(
@@ -723,8 +734,8 @@ def build_pdf():
             with open(out_path, "wb") as f:
                 writer.write(f)
 
-            # Upload PDF to S3
-            pdf_key = f"{user_uid}/{month}/form2290.pdf"
+            # Upload PDF to S3 using submission ID structure
+            pdf_key = f"submission_{filing_id}/form2290.pdf"
             try:
                 with open(out_path, 'rb') as pf:
                     s3.put_object(
@@ -1144,18 +1155,14 @@ def admin_download_file(submission_id, file_type):
         if not submission:
             return jsonify({"error": "Submission not found"}), 404
         
-        s3_key = None
-        content_type = None
-        
-        if file_type.lower() == "pdf" and submission.pdf_s3_key:
-            s3_key = submission.pdf_s3_key
-            content_type = "application/pdf"
-        elif file_type.lower() == "xml" and submission.xml_s3_key:
-            s3_key = submission.xml_s3_key
-            content_type = "application/xml"
+        # Use fallback function to get correct S3 key
+        s3_key = get_s3_key_with_fallback(submission, file_type)
         
         if not s3_key:
             return jsonify({"error": f"{file_type.upper()} file not found"}), 404
+        
+        # Set content type based on file type
+        content_type = "application/pdf" if file_type.lower() == "pdf" else "application/xml"
         
         # Download from S3 - CHANGE FILES_BUCKET to BUCKET
         try:
@@ -1447,8 +1454,12 @@ def download_submission_file(submission_id, file_type):
             except:
                 pass
         
-        # Get the appropriate S3 key
-        s3_key = submission.pdf_s3_key if file_type == 'pdf' else submission.xml_s3_key
+        # Get the appropriate S3 key using fallback function
+        xml_s3_key = get_s3_key_with_fallback(submission, 'xml')
+        pdf_s3_key = get_s3_key_with_fallback(submission, 'pdf')
+        
+        # Use the found keys for download
+        s3_key = pdf_s3_key if file_type == 'pdf' else xml_s3_key
         
         if not s3_key:
             audit_logger.log_error_event(
@@ -1599,6 +1610,45 @@ def download_audit_logs(log_type):
         return send_file(filename, as_attachment=True, download_name=f'{log_type}_audit_{datetime.now().strftime("%Y%m%d")}.log')
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+def get_s3_key_with_fallback(submission, file_type):
+    """
+    Get S3 key for a file, with fallback to check both old and new structures.
+    This ensures compatibility during the migration period.
+    """
+    if file_type == 'pdf':
+        primary_key = submission.pdf_s3_key
+    else:  # xml
+        primary_key = submission.xml_s3_key
+    
+    # If we have a key in database, check if it exists in S3
+    if primary_key:
+        try:
+            s3.head_object(Bucket=BUCKET, Key=primary_key)
+            return primary_key
+        except:
+            # File doesn't exist at recorded location
+            pass
+    
+    # Try new structure
+    new_key = f"submission_{submission.id}/form2290.{file_type}"
+    try:
+        s3.head_object(Bucket=BUCKET, Key=new_key)
+        return new_key
+    except:
+        pass
+    
+    # Try old structure if we can reconstruct it
+    if submission.user_uid and submission.month:
+        old_key = f"{submission.user_uid}/{submission.month}/form2290.{file_type}"
+        try:
+            s3.head_object(Bucket=BUCKET, Key=old_key)
+            return old_key
+        except:
+            pass
+    
+    # Return the primary key even if file doesn't exist (for error handling)
+    return primary_key
 
 if __name__ == "__main__":
     print("🔥 Starting Flask development server...")

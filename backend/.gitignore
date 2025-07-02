@@ -29,6 +29,9 @@ instance/
 /backend/test_delete.py
 /backend/test_admin.py
 
+# Audit viewing tools
+/backend/Audit/view_audit_logs.py
+
 # =========================
 # Next.js frontend
 # =========================

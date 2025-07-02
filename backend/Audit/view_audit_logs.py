@@ -4,13 +4,18 @@ from datetime import datetime
 
 def show_log_info():
     """Show information about available log files"""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    backend_dir = os.path.dirname(script_dir)
+    
     print("📊 Log File Information:")
     print("=" * 60)
     
-    # Check files in current directory (Audit folder) - these are the active ones now
+    # Check both possible locations
     log_files = [
-        ('local', 'localaudit.log'),
-        ('production', 'productionaudit.log')
+        ('local', os.path.join(backend_dir, 'localaudit.log')),
+        ('local (old)', os.path.join(script_dir, 'localaudit.log')),
+        ('production', os.path.join(backend_dir, 'productionaudit.log')),
+        ('production (old)', os.path.join(script_dir, 'productionaudit.log'))
     ]
     
     for log_type, filepath in log_files:
@@ -34,11 +39,14 @@ def show_log_info():
 
 def view_logs(log_type, lines=50):
     """View recent audit log entries"""
-    # Since the log files are now in the Audit directory (current directory), look locally
+    # Get the script directory and go up one level to backend directory
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    backend_dir = os.path.dirname(script_dir)
+    
     if log_type == 'local':
-        filename = 'localaudit.log'
+        filename = os.path.join(backend_dir, 'localaudit.log')
     elif log_type == 'production':
-        filename = 'productionaudit.log'
+        filename = os.path.join(backend_dir, 'productionaudit.log')
     else:
         print("Invalid log type. Use 'local' or 'production'")
         return
