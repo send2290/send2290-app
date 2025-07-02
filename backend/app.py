@@ -4,6 +4,7 @@ import json
 import io
 import logging
 import zipfile  # Add this import
+import requests  # Add this for CAPTCHA verification
 from functools import wraps
 from flask import Flask, request, jsonify, make_response, send_file, Response
 from flask_cors import CORS
@@ -21,6 +22,37 @@ from firebase_admin import credentials, auth
 from Audit.enhanced_audit import IRS2290AuditLogger
 
 load_dotenv()
+
+# CAPTCHA verification function
+def verify_recaptcha(captcha_token):
+    """
+    Verify reCAPTCHA token with Google's servers
+    Returns True if valid, False otherwise
+    """
+    if not captcha_token:
+        return False
+    
+    secret_key = os.getenv('RECAPTCHA_SECRET_KEY')
+    if not secret_key:
+        print("⚠️ RECAPTCHA_SECRET_KEY not configured, skipping CAPTCHA verification")
+        return True  # Allow submission if not configured (for development)
+    
+    verification_url = 'https://www.google.com/recaptcha/api/siteverify'
+    data = {
+        'secret': secret_key,
+        'response': captcha_token
+    }
+    
+    try:
+        response = requests.post(verification_url, data=data, timeout=10)
+        result = response.json()
+        
+        print(f"🤖 CAPTCHA verification result: {result}")
+        
+        return result.get('success', False)
+    except Exception as e:
+        print(f"❌ CAPTCHA verification error: {e}")
+        return False
 
 # Hybrid database configuration
 if os.getenv("FLASK_ENV") == "development":
@@ -199,13 +231,6 @@ BUCKET = os.getenv('FILES_BUCKET')
 print(f"🪣 S3 Bucket configured: {BUCKET}")
 if not BUCKET:
     print("❌ WARNING: FILES_BUCKET environment variable is not set!")
-    print("📋 Available environment variables:")
-    for key in sorted(os.environ.keys()):
-        if any(keyword in key.upper() for keyword in ['AWS', 'BUCKET', 'S3', 'FILE']):
-            value = os.environ[key]
-            # Hide sensitive values
-            display_value = value[:10] + '...' if len(value) > 10 else value
-            print(f"   {key} = {display_value}")
     raise RuntimeError("FILES_BUCKET environment variable is required!")
 
 def verify_firebase_token(f):
@@ -543,6 +568,11 @@ def build_pdf():
         return make_response(jsonify({}), 200)
     
     data = request.get_json() or {}
+
+    # Verify CAPTCHA first
+    captcha_token = data.get('captchaToken')
+    if not verify_recaptcha(captcha_token):
+        return jsonify({"error": "CAPTCHA verification failed. Please try again."}), 400
 
     if not data.get("business_name") or not data.get("ein"):
         return jsonify({"error": "Missing business_name or ein"}), 400
@@ -1268,25 +1298,6 @@ def debug_s3_test():
             "accessible": False,
             "error": str(e)
         }), 500
-
-@app.route("/debug/env-check", methods=["GET"])
-@verify_admin_token
-def debug_env_check():
-    """Check environment variables (admin only)"""
-    env_vars = {}
-    for key in ['FILES_BUCKET', 'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'AWS_DEFAULT_REGION', 'DATABASE_URL']:
-        value = os.getenv(key)
-        if value:
-            # Show first 10 characters for security
-            env_vars[key] = value[:10] + '...' if len(value) > 10 else value
-        else:
-            env_vars[key] = None
-    
-    return jsonify({
-        "environment_variables": env_vars,
-        "bucket_configured": BUCKET is not None,
-        "current_bucket": BUCKET
-    })
 
 @app.route("/user/submissions", methods=["GET"])
 @verify_firebase_token

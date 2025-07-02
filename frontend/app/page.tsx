@@ -1,10 +1,11 @@
 "use client";
-import { useState, useEffect, ChangeEvent } from 'react'
+import { useState, useEffect, ChangeEvent, useRef } from 'react'
 import { auth } from '../lib/firebase'
 import { onAuthStateChanged } from 'firebase/auth'
 import LoginModal from './LoginModal'
 import { checkUserExists, createUserAndSendPassword } from '../lib/authUtils'
 import { DateTime } from "luxon";
+import ReCaptchaComponent, { ReCaptchaRef } from './components/ReCaptcha'
 
 export const weightCategories = [
   { label: 'A (55,000 lbs)',          value: 'A', tax: 100.00 },
@@ -131,6 +132,11 @@ export default function Form2290() {
   const [showLogin, setShowLogin]           = useState(false)
   const [showLoginModal, setShowLoginModal] = useState(false)
   const [pendingEmail, setPendingEmail]     = useState('')
+
+  // CAPTCHA state and ref
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null)
+  const [captchaError, setCaptchaError] = useState<string>('')
+  const captchaRef = useRef<ReCaptchaRef>(null)
 
   // Auto-populate email when user logs in
   useEffect(() => {
@@ -293,11 +299,30 @@ export default function Form2290() {
     })
   }
 
+  // CAPTCHA handlers
+  const handleCaptchaChange = (token: string | null) => {
+    setCaptchaToken(token)
+    setCaptchaError('')
+  }
+
+  const handleCaptchaExpired = () => {
+    setCaptchaToken(null)
+    setCaptchaError('CAPTCHA expired. Please complete it again.')
+  }
+
+  const handleCaptchaError = () => {
+    setCaptchaToken(null)
+    setCaptchaError('CAPTCHA error. Please try again.')
+  }
+
   const totalVINs      = formData.vehicles.length
   const lodgingCount   = formData.vehicles.filter(v => v.is_logging).length
   const suspendedCount = formData.vehicles.filter(v => v.is_suspended || v.is_agricultural).length
 
   const validateBeforeSubmit = (): string | null => {
+    // CAPTCHA validation first
+    if (!captchaToken) return 'Please complete the CAPTCHA verification'
+    
     if (!formData.business_name.trim()) return 'Business Name is required'
     if (!/^\d{9}$/.test(formData.ein))     return 'EIN must be 9 digits'
     if (formData.include_preparer) {
@@ -403,6 +428,7 @@ export default function Form2290() {
       console.log("🚗 Form data being sent:", JSON.stringify(formData, null, 2)); // Debug line
       console.log("🔗 Sending request to:", `${API_BASE}/build-pdf`); // Debug line
       console.log("🔐 Current user:", auth.currentUser?.email); // Debug line
+      console.log("🤖 CAPTCHA token:", captchaToken ? "✅ Valid" : "❌ Missing"); // Debug line
       
       const token = await auth.currentUser!.getIdToken();
       console.log("🎟️ Token obtained:", token ? "✅ Yes" : "❌ No"); // Debug line
@@ -413,7 +439,10 @@ export default function Form2290() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          ...formData,
+          captchaToken: captchaToken // Include CAPTCHA token
+        }),
       });
 
       console.log("📡 Response status:", response.status); // Debug line
@@ -470,6 +499,10 @@ export default function Form2290() {
 
         alert("✅ Form submitted successfully! XML and PDF generated and downloaded.");
       }
+
+      // Reset CAPTCHA after successful submission
+      captchaRef.current?.reset();
+      setCaptchaToken(null);
     } catch (error: any) {
       console.error("❌ Full error object:", error); // Enhanced debug
       console.error("❌ Error type:", typeof error); // Debug
@@ -855,6 +888,11 @@ export default function Form2290() {
             width: 100%;
             font-size: 1.1rem;
           }
+          .form-container .g-recaptcha {
+            transform: scale(0.85);
+            transform-origin: 0 0;
+            margin-bottom: 10px;
+          }
         }
       `}</style>
       <div className="form-container">
@@ -1122,15 +1160,83 @@ export default function Form2290() {
           </div>
         )}
 
+        {/* CAPTCHA Section */}
+        <h2 style={{ marginTop: 20 }}>Security Verification</h2>
+        <div style={{ marginTop: 12 }}>
+          {process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY ? (
+            <>
+              <ReCaptchaComponent
+                ref={captchaRef}
+                sitekey={process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY}
+                onChange={handleCaptchaChange}
+                onExpired={handleCaptchaExpired}
+                onError={handleCaptchaError}
+                theme="light"
+                size="normal"
+              />
+              {captchaError && (
+                <div style={{ 
+                  color: '#d32f2f', 
+                  fontSize: '0.9rem', 
+                  marginTop: '8px',
+                  fontWeight: '500'
+                }}>
+                  ⚠️ {captchaError}
+                </div>
+              )}
+              {!captchaToken && (
+                <div style={{ 
+                  color: '#666', 
+                  fontSize: '0.85rem', 
+                  marginTop: '4px',
+                  fontStyle: 'italic'
+                }}>
+                  Please complete the CAPTCHA verification above to submit your form.
+                </div>
+              )}
+            </>
+          ) : (
+            <div style={{ 
+              color: '#d32f2f', 
+              padding: '12px', 
+              backgroundColor: '#ffeaea', 
+              border: '1px solid #d32f2f', 
+              borderRadius: '4px',
+              fontSize: '0.9rem'
+            }}>
+              ⚠️ CAPTCHA is not configured. Please set NEXT_PUBLIC_RECAPTCHA_SITE_KEY in your environment variables.
+            </div>
+          )}
+        </div>
+
         {/* Actions */}
         <div style={{ marginTop: 20, display: 'flex', gap: 12 }}>
           <button
             type="button"
-            style={{ ...btnSmall, backgroundColor: '#28a745', color: '#fff', fontSize: '1.1rem', padding: '12px 24px' }}
+            style={{ 
+              ...btnSmall, 
+              backgroundColor: captchaToken ? '#28a745' : '#cccccc', 
+              color: '#fff', 
+              fontSize: '1.1rem', 
+              padding: '12px 24px',
+              cursor: captchaToken ? 'pointer' : 'not-allowed',
+              opacity: captchaToken ? 1 : 0.6
+            }}
             onClick={handleSubmit}
+            disabled={!captchaToken}
           >
           SUBMIT FORM 2290
           </button>
+          {!captchaToken && (
+            <div style={{ 
+              alignSelf: 'center',
+              color: '#666', 
+              fontSize: '0.85rem',
+              fontStyle: 'italic'
+            }}>
+              Complete CAPTCHA to enable submission
+            </div>
+          )}
         </div>
 
         {/* --- Admin Section (add this after the logout button) --- */}
