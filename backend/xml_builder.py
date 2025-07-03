@@ -1,5 +1,6 @@
 """
 IRS-compliant Form 2290 XML builder based on 2025v1.0 schema
+Enhanced with full support for all IRS statements and schedules
 """
 import xml.etree.ElementTree as ET
 from xml.dom import minidom
@@ -20,6 +21,147 @@ LOGGING_RATES = {
     "M": 273.0, "N": 289.5, "O": 306.0, "P": 322.5, "Q": 339.0, "R": 355.5,
     "S": 372.0, "T": 388.5, "U": 405.0, "V": 412.5, "W": 0.0
 }
+
+def build_supporting_statements(data: dict, return_data: ET.Element) -> None:
+    """Build all supporting statements based on form data"""
+    vehicles = data.get("vehicles", [])
+    
+    # 1. Credits Amount Statement (for disposals)
+    disposal_vehicles = [v for v in vehicles if v.get("disposal_date")]
+    if disposal_vehicles or data.get("tax_credits", 0) > 0:
+        credits_stmt = ET.SubElement(return_data, "CreditsAmountStatement")
+        credits_info = ET.SubElement(credits_stmt, "CreditsAmountInfo")
+        
+        for vehicle in disposal_vehicles:
+            disposal_item = ET.SubElement(credits_info, "DisposalReportingItem")
+            
+            explanation = f"Vehicle disposed - {vehicle.get('disposal_reason', 'N/A')}"
+            ET.SubElement(disposal_item, "CreditsAmountExplanationTxt").text = explanation
+            ET.SubElement(disposal_item, "DisposalReportingVIN").text = vehicle.get("vin", "")
+            ET.SubElement(disposal_item, "DisposalReportingDt").text = vehicle.get("disposal_date", "")
+            
+            disposal_amount = vehicle.get("disposal_amount", 0)
+            if disposal_amount:
+                ET.SubElement(disposal_item, "DisposalReportingAmt").text = f"{float(disposal_amount):.2f}"
+    
+    # 2. Suspended VIN Statement
+    suspended_vehicles = [v for v in vehicles if v.get("is_suspended") or v.get("is_agricultural")]
+    if suspended_vehicles:
+        suspended_stmt = ET.SubElement(return_data, "SuspendedVINStatement")
+        suspended_info = ET.SubElement(suspended_stmt, "SuspendedVINInfo")
+        
+        for vehicle in suspended_vehicles:
+            vin_detail = ET.SubElement(suspended_info, "VINDetail")
+            ET.SubElement(vin_detail, "VIN").text = vehicle.get("vin", "")
+    
+    # 3. Private Sale Vehicle Statement
+    private_sale_vehicles = [v for v in vehicles if v.get("sale_to_private_party")]
+    if private_sale_vehicles:
+        private_sale_stmt = ET.SubElement(return_data, "PrivateSaleVehicleStatement")
+        private_sale_info = ET.SubElement(private_sale_stmt, "PrivateSaleVehicleInfo")
+        
+        # Group by business (assuming same business for all)
+        name_address = ET.SubElement(private_sale_info, "NameAndAddress")
+        ET.SubElement(name_address, "BusinessNameLine1Txt").text = data.get("business_name", "")
+        
+        address_group = ET.SubElement(name_address, "USAddress")
+        ET.SubElement(address_group, "AddressLine1Txt").text = data.get("address", "")[:35]
+        ET.SubElement(address_group, "CityNm").text = data.get("city", "")
+        ET.SubElement(address_group, "StateAbbreviationCd").text = data.get("state", "")
+        ET.SubElement(address_group, "ZIPCd").text = data.get("zip", "")
+        
+        for vehicle in private_sale_vehicles:
+            ET.SubElement(private_sale_info, "VIN").text = vehicle.get("vin", "")
+    
+    # 4. TGW Increase Worksheet
+    tgw_vehicles = [v for v in vehicles if v.get("tgw_increased")]
+    if tgw_vehicles:
+        tgw_stmt = ET.SubElement(return_data, "TGWIncreaseWorksheet")
+        
+        for vehicle in tgw_vehicles:
+            tgw_info = ET.SubElement(tgw_stmt, "TGWIncreaseInfo")
+            
+            increase_month = vehicle.get("tgw_increase_month", "")
+            if len(increase_month) >= 6:
+                month_num = int(increase_month[-2:]) if increase_month[-2:].isdigit() else 7
+                ET.SubElement(tgw_info, "TGWIncreaseMonthNum").text = str(month_num)
+            
+            current_category = vehicle.get("category", "")
+            previous_category = vehicle.get("tgw_previous_category", "")
+            
+            ET.SubElement(tgw_info, "TGWCategoryCd").text = current_category
+            
+            # Calculate tax amounts
+            new_rate = WEIGHT_RATES.get(current_category, 0.0)
+            previous_rate = WEIGHT_RATES.get(previous_category, 0.0)
+            
+            ET.SubElement(tgw_info, "NewTaxAmt").text = f"{new_rate:.2f}"
+            ET.SubElement(tgw_info, "PreviousTaxAmt").text = f"{previous_rate:.2f}"
+            ET.SubElement(tgw_info, "AdditionalTaxAmt").text = f"{max(0, new_rate - previous_rate):.2f}"
+    
+    # 5. VIN Correction Explanation Statement
+    if data.get("vin_correction") and data.get("vin_correction_explanation"):
+        vin_correction_stmt = ET.SubElement(return_data, "VINCorrectionExplanationStmt")
+        ET.SubElement(vin_correction_stmt, "ExplanationTxt").text = data.get("vin_correction_explanation", "")
+    
+    # 6. Reasonable Cause Explanation (for amendments)
+    if data.get("amended_return") and data.get("reasonable_cause_explanation"):
+        reasonable_cause_stmt = ET.SubElement(return_data, "ReasonableCauseExpln")
+        ET.SubElement(reasonable_cause_stmt, "ExplanationTxt").text = data.get("reasonable_cause_explanation", "")
+    
+    # 7. Statement in Support of Suspension
+    if suspended_vehicles:
+        suspension_stmt = ET.SubElement(return_data, "StmtInSupportOfSuspension")
+        suspension_info = ET.SubElement(suspension_stmt, "StmtInSupportOfSuspensionInfo")
+        
+        for vehicle in suspended_vehicles:
+            suspension_detail = ET.SubElement(suspension_info, "VehicleSuspensionDetail")
+            ET.SubElement(suspension_detail, "VIN").text = vehicle.get("vin", "")
+            ET.SubElement(suspension_detail, "BusinessName").text = data.get("business_name", "")
+            ET.SubElement(suspension_detail, "Dt").text = datetime.now().strftime("%Y-%m-%d")
+
+
+def build_enhanced_payment_record(data: dict, return_data: ET.Element) -> None:
+    """Build enhanced IRSPayment2 record"""
+    if data.get("payEFTPS") and data.get("eftps_routing") and data.get("eftps_account"):
+        payment = ET.SubElement(return_data, "IRSPayment2")
+        
+        ET.SubElement(payment, "RoutingTransitNum").text = data.get("eftps_routing", "")
+        ET.SubElement(payment, "BankAccountNum").text = data.get("eftps_account", "")
+        ET.SubElement(payment, "BankAccountTypeCd").text = data.get("account_type", "Checking")
+        
+        # Calculate payment amount (total tax minus credits)
+        vehicles = data.get("vehicles", [])
+        total_tax = 0.0
+        for vehicle in vehicles:
+            if vehicle.get("is_suspended") or vehicle.get("is_agricultural"):
+                continue
+            
+            cat = vehicle.get("category", "")
+            used = vehicle.get("used_month", "")
+            logging = bool(vehicle.get("is_logging"))
+            
+            if len(used) >= 6:
+                mon = int(used[-2:]) if used[-2:].isdigit() else 7
+            else:
+                mon = 7
+            
+            months_left = 12 if mon >= 7 else (13 - mon if 1 <= mon <= 12 else 0)
+            
+            if logging:
+                rate = LOGGING_RATES.get(cat, 0.0)
+            else:
+                rate = WEIGHT_RATES.get(cat, 0.0)
+            
+            total_tax += round(rate * (months_left / 12), 2)
+        
+        credits = float(data.get("tax_credits", 0.0))
+        payment_amount = max(0.0, total_tax - credits)
+        
+        ET.SubElement(payment, "PaymentAmt").text = f"{payment_amount:.2f}"
+        ET.SubElement(payment, "RequestedPaymentDt").text = data.get("payment_date", datetime.now().strftime("%Y-%m-%d"))
+        ET.SubElement(payment, "TaxpayerDaytimePhoneNum").text = data.get("taxpayer_phone", "")
+
 
 def build_2290_xml(data: dict) -> str:
     """Build IRS-compliant Form 2290 XML according to 2025v1.0 schema"""
@@ -172,10 +314,20 @@ def build_2290_xml(data: dict) -> str:
         ET.SubElement(form_2290, "AddressChangeInd").text = "X"
     if data.get("amended_return"):
         ET.SubElement(form_2290, "AmendedReturnInd").text = "X"
+        # Add amended month if provided
+        if data.get("amended_month"):
+            amended_month = data.get("amended_month", "")
+            if len(amended_month) >= 6:
+                month_num = int(amended_month[-2:]) if amended_month[-2:].isdigit() else 7
+                ET.SubElement(form_2290, "AmendedMonthNum").text = str(month_num)
     if data.get("vin_correction"):
         ET.SubElement(form_2290, "VINCorrectionInd").text = "X"
     if data.get("final_return"):
         ET.SubElement(form_2290, "FinalReturnInd").text = "X"
+    
+    # Special conditions
+    if data.get("special_conditions"):
+        ET.SubElement(form_2290, "SpecialConditionDesc").text = data.get("special_conditions", "")
     
     # Calculate tax computation by category
     vehicles = data.get("vehicles", [])
@@ -238,10 +390,23 @@ def build_2290_xml(data: dict) -> str:
     if total_tax > 0:
         ET.SubElement(form_2290, "TotalTaxComputationAmt").text = f"{total_tax:.2f}"
     
+    # Suspended vehicle counts (enhanced)
+    suspended_non_logging = len([v for v in vehicles if v.get("is_suspended") and not v.get("is_logging")])
+    suspended_logging = len([v for v in vehicles if v.get("is_suspended") and v.get("is_logging")])
+    
+    if suspended_non_logging > 0:
+        ET.SubElement(form_2290, "TaxSuspendedNonLoggingVehCnt").text = str(suspended_non_logging)
+    if suspended_logging > 0:
+        ET.SubElement(form_2290, "TaxSuspendedLoggingVehCnt").text = str(suspended_logging)
+    
     # Balance due (after any credits)
     credits = float(data.get("tax_credits", 0.0))
     balance_due = max(0.0, total_tax - credits)
     ET.SubElement(form_2290, "BalanceDueAmt").text = f"{balance_due:.2f}"
+    
+    # Add credits amount if provided
+    if credits > 0:
+        ET.SubElement(form_2290, "TaxCreditsAmt").text = f"{credits:.2f}"
     
     # Payment method
     if data.get("payEFTPS"):
@@ -282,6 +447,11 @@ def build_2290_xml(data: dict) -> str:
     if total_reported > 0:
         ET.SubElement(schedule1, "TaxableVehicleCnt").text = str(total_reported)
 
+    # ── Build Supporting Statements ─────────────────────
+    build_supporting_statements(data, return_data)
+    
+    # ── Build Enhanced Payment Record ───────────────────
+    build_enhanced_payment_record(data, return_data)
     
     # ── Return Pretty XML ───────────────────────────────
     rough = ET.tostring(root, encoding="utf-8")

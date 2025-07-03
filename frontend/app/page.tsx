@@ -41,6 +41,16 @@ type Vehicle = {
   is_suspended: boolean
   is_agricultural: boolean
   mileage_5000_or_less: boolean
+  // Enhanced vehicle properties for IRS compliance
+  disposal_date?: string           // For CreditsAmountStatement
+  disposal_reason?: string         // Reason for disposal/sale
+  disposal_amount?: number         // Amount received for disposal
+  sale_to_private_party?: boolean  // For PrivateSaleVehicleStatement
+  tgw_increased?: boolean          // If weight category increased during year
+  tgw_increase_month?: string      // Month weight increased
+  tgw_previous_category?: string   // Previous weight category
+  vin_corrected?: boolean          // If this VIN was corrected
+  vin_correction_reason?: string   // Reason for VIN correction
 }
 
 interface AdminSubmission {
@@ -76,7 +86,7 @@ export default function Form2290() {
   // Always get today's date in America/New_York (Eastern) as YYYY-MM-DD
   const easternToday = DateTime.now().setZone("America/New_York").toISODate();
 
-  // Form state (added `email` and missing IRS compliance fields)
+  // Form state (enhanced with IRS compliance fields)
   const [formData, setFormData] = useState({
     email:             '',
     business_name:     '',
@@ -93,11 +103,26 @@ export default function Form2290() {
     amended_return:    false,
     vin_correction:    false,
     final_return:      false,
+    
+    // Amendment-related fields
+    amended_month:     '',
+    reasonable_cause_explanation: '',
+    
+    // VIN correction fields
+    vin_correction_explanation: '',
+    
+    // Special conditions
+    special_conditions: '',
+    
     // Business Officer Information (required for signing)
     officer_name:      '', // Person who signs the return
     officer_title:     '', // Title (President, Owner, Manager, etc.)
     taxpayer_pin:      '', // 5-digit PIN for electronic signature
     tax_credits:       0,  // Tax credits to apply against liability
+    
+    // Enhanced disposals/credits
+    has_disposals:     false,
+    
     include_preparer:  false,
     preparer_name:           '',
     preparer_ptin:           '',
@@ -127,8 +152,14 @@ export default function Form2290() {
     signature_date: easternToday,
     payEFTPS:       false,
     payCard:        false,
+    
+    // Enhanced payment fields
     eftps_routing:  '',
     eftps_account:  '',
+    account_type:   '',
+    payment_date:   '',
+    taxpayer_phone: '',
+    
     card_holder:    '',
     card_number:    '',
     card_exp:       '',
@@ -195,7 +226,7 @@ export default function Form2290() {
     setTotalTax(total)
   }, [formData.vehicles])
 
-  const handleChange = (e: ChangeEvent<HTMLInputElement|HTMLSelectElement>) => {
+  const handleChange = (e: ChangeEvent<HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement>) => {
     const t = e.target as HTMLInputElement
     const { name, type, value, checked } = t
 
@@ -250,6 +281,8 @@ export default function Form2290() {
         vv.is_agricultural || vv.is_suspended
           ? (vv.category = 'W')
           : vv.category === 'W' && (vv.category = '')
+      } else if (type === 'number') {
+        vv[field] = value ? parseFloat(value) : undefined
       } else {
         vv[field] = value as any
       }
@@ -294,6 +327,16 @@ export default function Form2290() {
           is_suspended: false,
           is_agricultural: false,
           mileage_5000_or_less: false,
+          // Initialize enhanced fields
+          disposal_date: undefined,
+          disposal_reason: undefined,
+          disposal_amount: undefined,
+          sale_to_private_party: false,
+          tgw_increased: false,
+          tgw_increase_month: undefined,
+          tgw_previous_category: undefined,
+          vin_corrected: false,
+          vin_correction_reason: undefined,
         },
       ],
     })
@@ -345,6 +388,16 @@ export default function Form2290() {
     // Tax credits validation (if provided)
     if (formData.tax_credits < 0) return 'Tax credits cannot be negative'
     
+    // Amendment validation
+    if (formData.amended_return && !formData.amended_month) {
+      return 'Month being amended is required for amended returns'
+    }
+    
+    // VIN correction validation
+    if (formData.vin_correction && !formData.vin_correction_explanation.trim()) {
+      return 'VIN correction explanation is required'
+    }
+    
     if (formData.include_preparer) {
       if (!formData.preparer_name.trim())      return 'Preparer Name is required'
       if (!formData.preparer_ptin.trim())      return 'Preparer PTIN is required'
@@ -367,9 +420,11 @@ export default function Form2290() {
       return 'Select either EFTPS or Credit/Debit Card'
     }
     if (formData.payEFTPS) {
-      if (!formData.eftps_routing.trim() || !formData.eftps_account.trim()) {
-        return 'EFTPS routing and account are required'
-      }
+      if (!/^\d{9}$/.test(formData.eftps_routing)) return 'Routing number must be 9 digits'
+      if (!formData.eftps_account.trim()) return 'Account number is required'
+      if (!formData.account_type) return 'Account type is required'
+      if (!formData.payment_date) return 'Payment date is required'
+      if (!/^\d{10}$/.test(formData.taxpayer_phone)) return 'Taxpayer phone must be 10 digits'
     }
     if (formData.payCard) {
       if (!formData.card_holder.trim() ||
@@ -384,6 +439,17 @@ export default function Form2290() {
       if (!v.vin.trim()) return `VIN is required for vehicle #${idx + 1}`;
       if (!v.used_month) return `Month is required for vehicle #${idx + 1}`;
       if (!v.category) return `Weight is required for vehicle #${idx + 1}`;
+      
+      // Enhanced vehicle validation
+      if (v.disposal_date && !v.disposal_reason) {
+        return `Disposal reason is required for vehicle #${idx + 1}`
+      }
+      if (v.tgw_increased && (!v.tgw_increase_month || !v.tgw_previous_category)) {
+        return `Weight increase details are required for vehicle #${idx + 1}`
+      }
+      if (v.vin_corrected && !v.vin_correction_reason?.trim()) {
+        return `VIN correction reason is required for vehicle #${idx + 1}`
+      }
     }
     return null
   }
@@ -931,7 +997,8 @@ export default function Form2290() {
           }
           .vehicle-row input:not([type="checkbox"]),
           .vehicle-row select,
-          .vehicle-row button {
+          .vehicle-row button,
+          .vehicle-row textarea {
             width: 100% !important;
             min-width: 0 !important;
             font-size: 1rem;
@@ -939,12 +1006,14 @@ export default function Form2290() {
           .vehicle-row label {
             width: 100%;
             font-size: 1rem;
+            margin-bottom: 8px;
           }
           .vehicle-row {
             margin-bottom: 18px !important;
           }
           .form-container input:not([type="checkbox"]),
-          .form-container select {
+          .form-container select,
+          .form-container textarea {
             width: 100% !important;
             min-width: 0 !important;
             font-size: 1rem;
@@ -971,6 +1040,16 @@ export default function Form2290() {
           .form-container label {
             padding: 8px 0;
             min-height: 44px; /* Touch-friendly minimum height */
+          }
+          
+          /* Enhanced vehicle sections on mobile */
+          .vehicle-row > div {
+            width: 100% !important;
+          }
+          
+          .vehicle-row > div > div {
+            flex-direction: column !important;
+            gap: 8px !important;
           }
         }
       `}</style>
@@ -1075,6 +1154,63 @@ export default function Form2290() {
           ))}
         </div>
 
+        {/* Amended Return Details */}
+        {formData.amended_return && (
+          <div style={{ marginTop: 20, padding: 16, border: '1px solid #ffc107', borderRadius: 4, backgroundColor: '#fff3cd' }}>
+            <h3>📝 Amended Return Details</h3>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <select 
+                name="amended_month" 
+                value={formData.amended_month || ''} 
+                onChange={handleChange}
+                required
+              >
+                <option value="">Select Month Being Amended</option>
+                {months.map((m) => (
+                  <option key={m.value} value={m.value}>{m.label}</option>
+                ))}
+              </select>
+              <textarea
+                name="reasonable_cause_explanation"
+                placeholder="Explain reason for amendment (if late filing or other reasonable cause)"
+                value={formData.reasonable_cause_explanation || ''}
+                onChange={handleChange}
+                rows={3}
+                style={{ minWidth: '300px', resize: 'vertical' }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* VIN Correction Details */}
+        {formData.vin_correction && (
+          <div style={{ marginTop: 20, padding: 16, border: '1px solid #17a2b8', borderRadius: 4, backgroundColor: '#d1ecf1' }}>
+            <h3>🔧 VIN Correction Explanation</h3>
+            <textarea
+              name="vin_correction_explanation"
+              placeholder="Explain the VIN corrections being made (include old and new VINs if applicable)..."
+              value={formData.vin_correction_explanation || ''}
+              onChange={handleChange}
+              rows={4}
+              required
+              style={{ width: '100%', resize: 'vertical' }}
+            />
+          </div>
+        )}
+
+        {/* Special Conditions */}
+        <h2 style={{ marginTop: 20 }}>Special Conditions (Optional)</h2>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <textarea
+            name="special_conditions"
+            placeholder="Describe any special conditions that apply to this return..."
+            value={formData.special_conditions || ''}
+            onChange={handleChange}
+            rows={2}
+            style={{ minWidth: '400px', resize: 'vertical' }}
+          />
+        </div>
+
         {/* Business Officer Information & Tax Credits */}
         <h2 style={{ marginTop: 20 }}>Business Officer Information</h2>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -1108,7 +1244,7 @@ export default function Form2290() {
         </div>
         
         {/* Tax Credits */}
-        <h2 style={{ marginTop: 20 }}>Tax Credits (Optional)</h2>
+        <h2 style={{ marginTop: 20 }}>Tax Credits & Disposals</h2>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <input 
             name="tax_credits" 
@@ -1120,8 +1256,18 @@ export default function Form2290() {
             onChange={handleChange}
             title="Amount of tax credits to apply against tax liability"
           />
+          <label style={{ ...labelSmall, cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              name="has_disposals"
+              checked={formData.has_disposals || false}
+              onChange={handleChange}
+              style={{ cursor: 'pointer' }}
+            />
+            <span style={{ cursor: 'pointer' }}>Include Vehicle Disposals/Sales</span>
+          </label>
           <span style={{ fontSize: '0.9rem', color: '#666', fontStyle: 'italic' }}>
-            Enter any tax credits to be applied against your tax liability
+            Enter any tax credits and mark vehicles disposed below
           </span>
         </div>
 
@@ -1216,78 +1362,234 @@ export default function Form2290() {
         {/* Vehicles */}
         <h2 style={{ marginTop: 20 }}>Vehicles</h2>
         {formData.vehicles.map((v, i) => (
-          <div key={i} className="vehicle-row" style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
-            <input
-              style={{ width: 180 }}
-              type="text"
-              name={`vehicle_${i}_vin`}
-              placeholder="VIN"
-              pattern="[A-Za-z0-9]{17}"
-              maxLength={17}
-              title="17 chars"
-              value={v.vin}
-              onChange={handleChange}
-              required
-            />
-            <select
-              name={`vehicle_${i}_used_month`}
-              value={v.used_month}
-              onChange={handleChange}
-              required
-            >
-              <option value="">Select Month</option>
-              {months.map((m) => (
-                <option key={m.value} value={m.value}>{m.label}</option>
-              ))}
-            </select>
-            <select
-              name={`vehicle_${i}_category`}
-              value={v.category}
-              onChange={handleChange}
-              required
-            >
-              <option value="">Select Weight</option>
-              {weightCategories.map((w) => (
-                <option key={w.value} value={w.value}>{w.label}</option>
-              ))}
-            </select>
-            <label style={{ ...labelSmall, cursor: 'pointer' }}>
-              <span style={{ cursor: 'pointer' }}>Logging?</span>
-              <input 
-                type="checkbox" 
-                name={`vehicle_${i}_is_logging`} 
-                checked={v.is_logging} 
+          <div key={i} className="vehicle-row" style={{ 
+            display: 'flex', 
+            gap: 8, 
+            alignItems: 'flex-start', 
+            marginBottom: 16,
+            padding: 12,
+            border: '1px solid #ddd',
+            borderRadius: 4,
+            backgroundColor: v.is_suspended || v.is_agricultural ? '#f8f9fa' : 'white',
+            flexWrap: 'wrap'
+          }}>
+            {/* Basic vehicle info - top row */}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', width: '100%', marginBottom: 8 }}>
+              <input
+                style={{ width: 180 }}
+                type="text"
+                name={`vehicle_${i}_vin`}
+                placeholder="VIN"
+                pattern="[A-Za-z0-9]{17}"
+                maxLength={17}
+                title="17 chars"
+                value={v.vin}
                 onChange={handleChange}
-                style={{ cursor: 'pointer' }}
+                required
               />
-            </label>
-            <label style={{ ...labelSmall, cursor: 'pointer' }}>
-              <span style={{ cursor: 'pointer' }}>Agricultural ≤7,000 mi</span>
-              <input 
-                type="checkbox" 
-                name={`vehicle_${i}_is_agricultural`} 
-                checked={v.is_agricultural} 
+              <select
+                name={`vehicle_${i}_used_month`}
+                value={v.used_month}
                 onChange={handleChange}
-                style={{ cursor: 'pointer' }}
-              />
-            </label>
-            <label style={{ ...labelSmall, cursor: 'pointer' }}>
-              <span style={{ cursor: 'pointer' }}>Non-Agricultural ≤5,000 mi</span>
-              <input 
-                type="checkbox" 
-                name={`vehicle_${i}_is_suspended`} 
-                checked={v.is_suspended} 
+                required
+                style={{ minWidth: 150 }}
+              >
+                <option value="">Select Month</option>
+                {months.map((m) => (
+                  <option key={m.value} value={m.value}>{m.label}</option>
+                ))}
+              </select>
+              <select
+                name={`vehicle_${i}_category`}
+                value={v.category}
                 onChange={handleChange}
-                style={{ cursor: 'pointer' }}
-              />
-            </label>
-            <button
-              type="button"
-              style={{ ...btnSmall, backgroundColor: '#d32f2f', color: '#fff' }}
-              onClick={() => removeVehicle(i)}
-            >
-              Remove
-            </button>
+                required
+                style={{ minWidth: 180 }}
+              >
+                <option value="">Select Weight</option>
+                {weightCategories.map((w) => (
+                  <option key={w.value} value={w.value}>{w.label}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                style={{ ...btnSmall, backgroundColor: '#d32f2f', color: '#fff' }}
+                onClick={() => removeVehicle(i)}
+              >
+                Remove
+              </button>
+            </div>
+
+            {/* Checkboxes - second row */}
+            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', width: '100%', marginBottom: 8 }}>
+              <label style={{ ...labelSmall, cursor: 'pointer' }}>
+                <input 
+                  type="checkbox" 
+                  name={`vehicle_${i}_is_logging`} 
+                  checked={v.is_logging} 
+                  onChange={handleChange}
+                  style={{ cursor: 'pointer' }}
+                />
+                <span style={{ cursor: 'pointer' }}>Logging Vehicle</span>
+              </label>
+              <label style={{ ...labelSmall, cursor: 'pointer' }}>
+                <input 
+                  type="checkbox" 
+                  name={`vehicle_${i}_is_agricultural`} 
+                  checked={v.is_agricultural} 
+                  onChange={handleChange}
+                  style={{ cursor: 'pointer' }}
+                />
+                <span style={{ cursor: 'pointer' }}>Agricultural ≤7,500 mi</span>
+              </label>
+              <label style={{ ...labelSmall, cursor: 'pointer' }}>
+                <input 
+                  type="checkbox" 
+                  name={`vehicle_${i}_is_suspended`} 
+                  checked={v.is_suspended} 
+                  onChange={handleChange}
+                  style={{ cursor: 'pointer' }}
+                />
+                <span style={{ cursor: 'pointer' }}>Non-Agricultural ≤5,000 mi</span>
+              </label>
+            </div>
+
+            {/* Advanced options - expandable section */}
+            <div style={{ width: '100%', borderTop: '1px solid #eee', paddingTop: 8 }}>
+              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+                <label style={{ ...labelSmall, cursor: 'pointer' }}>
+                  <input 
+                    type="checkbox" 
+                    name={`vehicle_${i}_disposal_date`} 
+                    checked={!!v.disposal_date} 
+                    onChange={(e) => {
+                      const vehicles = [...formData.vehicles];
+                      vehicles[i] = {
+                        ...vehicles[i],
+                        disposal_date: e.target.checked ? todayStr : undefined,
+                        disposal_reason: e.target.checked ? vehicles[i].disposal_reason : undefined,
+                        disposal_amount: e.target.checked ? vehicles[i].disposal_amount : undefined
+                      };
+                      setFormData({ ...formData, vehicles });
+                    }}
+                    style={{ cursor: 'pointer' }}
+                  />
+                  <span style={{ cursor: 'pointer' }}>Vehicle Disposed/Sold</span>
+                </label>
+
+                <label style={{ ...labelSmall, cursor: 'pointer' }}>
+                  <input 
+                    type="checkbox" 
+                    name={`vehicle_${i}_tgw_increased`} 
+                    checked={v.tgw_increased || false} 
+                    onChange={handleChange}
+                    style={{ cursor: 'pointer' }}
+                  />
+                  <span style={{ cursor: 'pointer' }}>Weight Category Increased</span>
+                </label>
+
+                <label style={{ ...labelSmall, cursor: 'pointer' }}>
+                  <input 
+                    type="checkbox" 
+                    name={`vehicle_${i}_vin_corrected`} 
+                    checked={v.vin_corrected || false} 
+                    onChange={handleChange}
+                    style={{ cursor: 'pointer' }}
+                  />
+                  <span style={{ cursor: 'pointer' }}>VIN Corrected</span>
+                </label>
+
+                <label style={{ ...labelSmall, cursor: 'pointer' }}>
+                  <input 
+                    type="checkbox" 
+                    name={`vehicle_${i}_sale_to_private_party`} 
+                    checked={v.sale_to_private_party || false} 
+                    onChange={handleChange}
+                    style={{ cursor: 'pointer' }}
+                  />
+                  <span style={{ cursor: 'pointer' }}>Sold to Private Party</span>
+                </label>
+              </div>
+
+              {/* Disposal details */}
+              {v.disposal_date && (
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8, padding: 8, backgroundColor: '#fff3cd', borderRadius: 4 }}>
+                  <input
+                    type="date"
+                    name={`vehicle_${i}_disposal_date`}
+                    value={v.disposal_date || ''}
+                    onChange={handleChange}
+                    max={todayStr}
+                    placeholder="Disposal Date"
+                    required
+                  />
+                  <select
+                    name={`vehicle_${i}_disposal_reason`}
+                    value={v.disposal_reason || ''}
+                    onChange={handleChange}
+                    required
+                  >
+                    <option value="">Disposal Reason</option>
+                    <option value="Sold">Sold</option>
+                    <option value="Destroyed">Destroyed</option>
+                    <option value="Stolen">Stolen</option>
+                    <option value="Transferred">Transferred</option>
+                    <option value="Traded">Traded</option>
+                  </select>
+                  <input
+                    type="number"
+                    name={`vehicle_${i}_disposal_amount`}
+                    placeholder="Disposal Amount ($)"
+                    min="0"
+                    step="0.01"
+                    value={v.disposal_amount || ''}
+                    onChange={handleChange}
+                  />
+                </div>
+              )}
+
+              {/* Weight increase details */}
+              {v.tgw_increased && (
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8, padding: 8, backgroundColor: '#d1ecf1', borderRadius: 4 }}>
+                  <select
+                    name={`vehicle_${i}_tgw_increase_month`}
+                    value={v.tgw_increase_month || ''}
+                    onChange={handleChange}
+                    required
+                  >
+                    <option value="">Month Weight Increased</option>
+                    {months.map((m) => (
+                      <option key={m.value} value={m.value}>{m.label}</option>
+                    ))}
+                  </select>
+                  <select
+                    name={`vehicle_${i}_tgw_previous_category`}
+                    value={v.tgw_previous_category || ''}
+                    onChange={handleChange}
+                    required
+                  >
+                    <option value="">Previous Weight Category</option>
+                    {weightCategories.filter(w => w.value !== 'W').map((w) => (
+                      <option key={w.value} value={w.value}>{w.label}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* VIN correction details */}
+              {v.vin_corrected && (
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8, padding: 8, backgroundColor: '#f8d7da', borderRadius: 4 }}>
+                  <input
+                    name={`vehicle_${i}_vin_correction_reason`}
+                    placeholder="Explain the VIN correction..."
+                    value={v.vin_correction_reason || ''}
+                    onChange={handleChange}
+                    style={{ minWidth: '300px' }}
+                    required
+                  />
+                </div>
+              )}
+            </div>
           </div>
         ))}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
@@ -1348,8 +1650,52 @@ export default function Form2290() {
         </div>
         {formData.payEFTPS && (
           <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <input name="eftps_routing" placeholder="Routing Number" value={formData.eftps_routing} onChange={handleChange} />
-            <input name="eftps_account" placeholder="Account Number" value={formData.eftps_account} onChange={handleChange} />
+            <input 
+              name="eftps_routing" 
+              placeholder="Routing Number (9 digits)" 
+              pattern="\d{9}"
+              maxLength={9}
+              inputMode="numeric"
+              value={formData.eftps_routing} 
+              onChange={handleChange} 
+              required
+            />
+            <input 
+              name="eftps_account" 
+              placeholder="Account Number" 
+              value={formData.eftps_account} 
+              onChange={handleChange} 
+              required
+            />
+            <select
+              name="account_type"
+              value={formData.account_type || ''}
+              onChange={handleChange}
+              required
+            >
+              <option value="">Account Type</option>
+              <option value="Checking">Checking</option>
+              <option value="Savings">Savings</option>
+            </select>
+            <input
+              name="payment_date"
+              type="date"
+              min={todayStr}
+              value={formData.payment_date || ''}
+              onChange={handleChange}
+              title="Requested payment date"
+              required
+            />
+            <input
+              name="taxpayer_phone"
+              placeholder="Daytime Phone (10 digits)"
+              pattern="\d{10}"
+              maxLength={10}
+              inputMode="numeric"
+              value={formData.taxpayer_phone || ''}
+              onChange={handleChange}
+              required
+            />
           </div>
         )}
         {formData.payCard && (
