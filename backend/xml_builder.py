@@ -7,6 +7,46 @@ from xml.dom import minidom
 from datetime import datetime
 import os
 from collections import defaultdict
+import re
+
+def parse_month_to_yyyymm(month_str: str) -> str:
+    """
+    Convert month string to YYYYMM format.
+    Handles both "YYYYMM" format and "Month YYYY" format like "April 2026".
+    """
+    if not month_str or not month_str.strip():
+        return "202507"  # Default fallback
+    
+    month_str = month_str.strip()
+    
+    # If already in YYYYMM format (6 digits), return as-is
+    if re.match(r'^\d{6}$', month_str):
+        return month_str
+    
+    # Month name mapping
+    month_names = {
+        'january': '01', 'february': '02', 'march': '03', 'april': '04',
+        'may': '05', 'june': '06', 'july': '07', 'august': '08',
+        'september': '09', 'october': '10', 'november': '11', 'december': '12'
+    }
+    
+    # Try to parse "Month YYYY" format
+    for month_name, month_num in month_names.items():
+        if month_name in month_str.lower():
+            # Extract year from the string
+            year_match = re.search(r'\b(20\d{2})\b', month_str)
+            if year_match:
+                year = year_match.group(1)
+                return f"{year}{month_num}"
+    
+    # Fallback: try to extract any 6-digit number
+    yyyymm_match = re.search(r'\b(\d{6})\b', month_str)
+    if yyyymm_match:
+        return yyyymm_match.group(1)
+    
+    # Default fallback
+    print(f"⚠️ Warning: Could not parse month '{month_str}', using July 2025")
+    return "202507"
 
 # Static tax tables (Table I and Logging Table II)
 WEIGHT_RATES = {
@@ -163,8 +203,97 @@ def build_enhanced_payment_record(data: dict, return_data: ET.Element) -> None:
         ET.SubElement(payment, "TaxpayerDaytimePhoneNum").text = data.get("taxpayer_phone", "")
 
 
+def validate_business_rules(data: dict) -> list:
+    """
+    Validate Form 2290 against IRS business rules
+    Returns list of validation errors
+    """
+    errors = []
+    vehicles = data.get("vehicles", [])
+    
+    # F2290-003-01: If Line 3 (TGW increase) has value, amended return must be checked
+    tgw_vehicles = [v for v in vehicles if v.get("tgw_increased")]
+    if tgw_vehicles and not data.get("amended_return"):
+        errors.append("F2290-003-01: Amended return must be checked when TGW increase is present")
+    
+    # F2290-004-01: Line 5 (credits) cannot be more than Line 4 (total tax)
+    total_tax = calculate_total_tax(vehicles)
+    credits = float(data.get("tax_credits", 0))
+    if credits > 0 and credits > total_tax:
+        errors.append("F2290-004-01: Credits amount cannot exceed total tax")
+    
+    # F2290-008-01: If 5000 mile checkbox checked, Category W must have positive value
+    mileage_vehicles = [v for v in vehicles if v.get("mileage_5000_or_less")]
+    if mileage_vehicles:
+        w_category_count = len([v for v in vehicles if v.get("category") == "W"])
+        if w_category_count == 0:
+            errors.append("F2290-008-01: Category W vehicles required when 5000 mile limit is checked")
+    
+    # F2290-027-01: If not final return, must have at least one VIN
+    if not data.get("final_return") and not vehicles:
+        errors.append("F2290-027-01: At least one VIN required unless final return")
+    
+    # F2290-032-01: If VIN correction checked, must have at least one VIN
+    if data.get("vin_correction") and not vehicles:
+        errors.append("F2290-032-01: At least one VIN required when VIN correction is checked")
+    
+    # F2290-033-01: If amended return checked, must have at least one VIN
+    if data.get("amended_return") and not vehicles:
+        errors.append("F2290-033-01: At least one VIN required for amended returns")
+    
+    # F2290-068: If balance due > 0, payment method must be selected
+    balance_due = max(0, total_tax - credits)
+    if balance_due > 0:
+        if not data.get("payEFTPS") and not data.get("payCard"):
+            errors.append("F2290-068: Payment method required when balance due > 0")
+    
+    # R0000-084-01: Taxpayer PIN validation for online filers
+    pin = data.get("taxpayer_pin", "")
+    if pin and pin == "00000":
+        errors.append("R0000-084-01: Taxpayer PIN cannot be all zeros")
+    
+    # VIN duplicate validation (F2290-017)
+    vins = [v.get("vin", "").strip().upper() for v in vehicles if v.get("vin")]
+    if len(vins) != len(set(vins)):
+        errors.append("F2290-017: Duplicate VINs not allowed")
+    
+    return errors
+
+def calculate_total_tax(vehicles: list) -> float:
+    """Calculate total tax for vehicles (helper function)"""
+    total = 0.0
+    for vehicle in vehicles:
+        if vehicle.get("is_suspended") or vehicle.get("is_agricultural"):
+            continue
+        
+        cat = vehicle.get("category", "")
+        used = vehicle.get("used_month", "")
+        logging = bool(vehicle.get("is_logging"))
+        
+        if len(used) >= 6:
+            mon = int(used[-2:]) if used[-2:].isdigit() else 7
+        else:
+            mon = 7
+        
+        months_left = 12 if mon >= 7 else (13 - mon if 1 <= mon <= 12 else 0)
+        
+        if logging:
+            rate = LOGGING_RATES.get(cat, 0.0)
+        else:
+            rate = WEIGHT_RATES.get(cat, 0.0)
+        
+        total += round(rate * (months_left / 12), 2)
+    
+    return total
+
 def build_2290_xml(data: dict) -> str:
     """Build IRS-compliant Form 2290 XML according to 2025v1.0 schema"""
+    
+    # Validate business rules first
+    validation_errors = validate_business_rules(data)
+    if validation_errors:
+        error_msg = "IRS Business Rule Violations:\n" + "\n".join(validation_errors)
+        raise ValueError(error_msg)
     
     # Create root Return element with namespace and version
     root = ET.Element("Return")
@@ -233,6 +362,11 @@ def build_2290_xml(data: dict) -> str:
         officer = ET.SubElement(return_header, "BusinessOfficerGrp")
         ET.SubElement(officer, "PersonNm").text = officer_name
         
+        # Officer SSN (required by IRS for e-filing)
+        officer_ssn = data.get("officer_ssn", "").replace("-", "").zfill(9)
+        if officer_ssn and officer_ssn != "000000000":
+            ET.SubElement(officer, "PersonSSN").text = officer_ssn
+        
         officer_title = data.get("officer_title", "").strip()
         if not officer_title:
             officer_title = "Owner"  # Default title if not provided
@@ -251,6 +385,16 @@ def build_2290_xml(data: dict) -> str:
         preparer = ET.SubElement(return_header, "PreparerPersonGrp")
         ET.SubElement(preparer, "PreparerPersonNm").text = data.get("preparer_name", "")
         ET.SubElement(preparer, "PTIN").text = data.get("preparer_ptin", "")
+        
+        # Self-employed indicator (required by IRS)
+        if data.get("preparer_self_employed", True):  # Default to True if not specified
+            ET.SubElement(preparer, "SelfEmployedInd").text = "X"
+        
+        # Preparer phone number
+        preparer_phone = data.get("preparer_phone", "").replace("-", "").replace("(", "").replace(")", "").replace(" ", "")
+        if preparer_phone:
+            ET.SubElement(preparer, "PhoneNum").text = preparer_phone
+        
         if data.get("date_prepared"):
             ET.SubElement(preparer, "PreparationDt").text = data.get("date_prepared", "")
     
@@ -316,9 +460,10 @@ def build_2290_xml(data: dict) -> str:
         ET.SubElement(form_2290, "AmendedReturnInd").text = "X"
         # Add amended month if provided
         if data.get("amended_month"):
-            amended_month = data.get("amended_month", "")
+            amended_month_raw = data.get("amended_month", "")
+            amended_month = parse_month_to_yyyymm(amended_month_raw)
             if len(amended_month) >= 6:
-                month_num = int(amended_month[-2:]) if amended_month[-2:].isdigit() else 7
+                month_num = int(amended_month[-2:]) if amended_month[-2:].isdigit() else 11
                 ET.SubElement(form_2290, "AmendedMonthNum").text = str(month_num)
     if data.get("vin_correction"):
         ET.SubElement(form_2290, "VINCorrectionInd").text = "X"

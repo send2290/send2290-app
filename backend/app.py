@@ -4,7 +4,6 @@ import json
 import io
 import logging
 import zipfile  # Add this import
-import requests  # Add this for CAPTCHA verification
 from functools import wraps
 from flask import Flask, request, jsonify, make_response, send_file, Response
 from flask_cors import CORS
@@ -21,38 +20,24 @@ import firebase_admin
 from firebase_admin import credentials, auth
 from Audit.enhanced_audit import IRS2290AuditLogger
 
-load_dotenv()
-
-# CAPTCHA verification function
-def verify_recaptcha(captcha_token):
-    """
-    Verify reCAPTCHA token with Google's servers
-    Returns True if valid, False otherwise
-    """
-    if not captcha_token:
-        return False
-    
-    secret_key = os.getenv('RECAPTCHA_SECRET_KEY')
-    if not secret_key:
-        print("⚠️ RECAPTCHA_SECRET_KEY not configured, skipping CAPTCHA verification")
-        return True  # Allow submission if not configured (for development)
-    
-    verification_url = 'https://www.google.com/recaptcha/api/siteverify'
-    data = {
-        'secret': secret_key,
-        'response': captcha_token
-    }
-    
+# Function to load form positions from JSON file
+def load_form_positions():
     try:
-        response = requests.post(verification_url, data=data, timeout=10)
-        result = response.json()
-        
-        print(f"🤖 CAPTCHA verification result: {result}")
-        
-        return result.get('success', False)
+        positions_file = os.path.join(os.path.dirname(__file__), "form_positions.json")
+        if os.path.exists(positions_file):
+            with open(positions_file, 'r') as f:
+                return json.load(f)
+        else:
+            print("⚠️ Warning: form_positions.json not found, using default positions")
+            return {}
     except Exception as e:
-        print(f"❌ CAPTCHA verification error: {e}")
-        return False
+        print(f"⚠️ Error loading form positions: {str(e)}")
+        return {}
+
+# Load form positions on startup
+FORM_POSITIONS = load_form_positions()
+
+load_dotenv()
 
 # Hybrid database configuration
 if os.getenv("FLASK_ENV") == "development":
@@ -89,32 +74,38 @@ class FilingsDocument(Base):
 
 Base.metadata.create_all(bind=engine)
 
-# Simple environment detection
-IS_PRODUCTION = os.getenv('RENDER') is not None or os.getenv('FLASK_ENV') == 'production'
+# Determine environment and initialize appropriate audit loggers
+ENVIRONMENT = os.getenv('FLASK_ENV', 'development')
+IS_PRODUCTION = ENVIRONMENT == 'production' or os.getenv('RENDER') is not None
 
-# Initialize the enhanced audit logger
+# Initialize both audit loggers
 if IS_PRODUCTION:
+    # Production environment
     enhanced_audit = IRS2290AuditLogger('production')
-    audit_log_file = 'Audit/productionaudit.log'
-    print("🔥 PRODUCTION MODE: Using Audit/productionaudit.log")
+    audit_log_file = 'productionaudit.log'
 else:
+    # Local development environment
     enhanced_audit = IRS2290AuditLogger('local')
-    audit_log_file = 'Audit/localaudit.log'
-    print("🛠️  LOCAL MODE: Using Audit/localaudit.log")
+    audit_log_file = 'localaudit.log'
 
-# Keep your existing basic audit logger but point it to the right file
-audit_logger = logging.getLogger('basic_audit')
-if not audit_logger.handlers:
-    audit_handler = logging.FileHandler(audit_log_file)
-    audit_handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
-    audit_logger.addHandler(audit_handler)
-    audit_logger.setLevel(logging.INFO)
+# Set up audit logging for IRS compliance
+audit_logger = logging.getLogger('audit')
+# Clear existing handlers
+for handler in audit_logger.handlers[:]:
+    audit_logger.removeHandler(handler)
+
+# Add new handler with environment-specific file
+audit_handler = logging.FileHandler(audit_log_file)
+audit_handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
+audit_logger.addHandler(audit_handler)
+audit_logger.setLevel(logging.INFO)
 
 def log_admin_action(action, details):
-    """Enhanced admin action logging - single entry"""
+    """Enhanced admin action logging with environment context"""
     user_email = getattr(request, 'user', {}).get('email', 'UNKNOWN_USER')
     
-    # Use only enhanced logger to avoid duplicates
+    # Log to both old and new systems during transition
+    audit_logger.info(f"ADMIN_ACTION: {action} | USER: {user_email} | ENV: {'PROD' if IS_PRODUCTION else 'LOCAL'} | DETAILS: {details}")
     enhanced_audit.log_admin_action(user_email, action, details)
 
 app = Flask(__name__)
@@ -137,44 +128,6 @@ def add_cors_headers(response):
         response.headers["Access-Control-Allow-Origin"] = origin
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
     response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
-    return response
-
-# API usage logging middleware
-@app.before_request
-def log_api_requests():
-    if request.method == "OPTIONS":
-        return
-    request.start_time = datetime.datetime.utcnow()
-
-@app.after_request
-def log_api_responses(response):
-    if request.method == "OPTIONS":
-        return response
-    
-    try:
-        # Calculate response time
-        response_time_ms = None
-        if hasattr(request, 'start_time'):
-            response_time = datetime.datetime.utcnow() - request.start_time
-            response_time_ms = int(response_time.total_seconds() * 1000)
-        
-        # Get user email if available
-        user_email = 'Anonymous'
-        if hasattr(request, 'user') and request.user:
-            user_email = request.user.get('email', 'Unknown')
-        
-        # Log API usage
-        audit_logger.log_api_usage(
-            user_email=user_email,
-            endpoint=request.endpoint or request.path,
-            method=request.method,
-            response_status=response.status_code,
-            response_time_ms=response_time_ms
-        )
-    except Exception as e:
-        # Don't let logging errors break the response
-        app.logger.error(f"API logging error: {e}")
-    
     return response
 
 # Firebase Admin initialization
@@ -205,21 +158,6 @@ except Exception as e:
     print(f"❌ Firebase initialization error: {e}")
     raise
 
-# Initialize audit logger
-# Determine environment based on multiple indicators
-environment = 'local'  # default
-if os.getenv("FLASK_ENV") == "production":
-    environment = 'production'
-elif os.getenv("FLASK_ENV") != "development":
-    # If not explicitly development, check for AWS indicators
-    if os.getenv('DATABASE_URL') and not os.getenv('DATABASE_URL').startswith('sqlite'):
-        environment = 'production'
-    elif os.getenv('AWS_ACCESS_KEY_ID') and os.getenv('FILES_BUCKET'):
-        environment = 'production'
-
-print(f"🔍 Audit Logger Environment: {environment}")
-audit_logger = IRS2290AuditLogger(environment)
-
 s3 = boto3.client(
     's3',
     aws_access_key_id     = os.getenv('AWS_ACCESS_KEY_ID'),
@@ -228,10 +166,6 @@ s3 = boto3.client(
     config=botocore.client.Config(signature_version='s3v4')
 )
 BUCKET = os.getenv('FILES_BUCKET')
-print(f"🪣 S3 Bucket configured: {BUCKET}")
-if not BUCKET:
-    print("❌ WARNING: FILES_BUCKET environment variable is not set!")
-    raise RuntimeError("FILES_BUCKET environment variable is required!")
 
 def verify_firebase_token(f):
     @wraps(f)
@@ -240,18 +174,12 @@ def verify_firebase_token(f):
             return make_response("", 200)
         auth_header = request.headers.get('Authorization', '')
         if not auth_header.startswith('Bearer '):
-            audit_logger.log_security_event("MISSING_AUTH_HEADER", details="Authorization header missing or malformed")
             return jsonify({"error": "Authorization header missing or malformed"}), 401
         token = auth_header.split('Bearer ')[1]
         try:
             decoded = firebase_auth.verify_id_token(token)
             request.user = decoded
-            # Log successful authentication (token verification)
-            user_email = decoded.get('email', 'Unknown')
-            audit_logger.log_login_attempt(user_email, success=True)
         except Exception as e:
-            audit_logger.log_login_attempt("Unknown", success=False, failure_reason=str(e))
-            audit_logger.log_security_event("INVALID_TOKEN", details=f"Token verification failed: {str(e)}")
             return jsonify({"error": "Invalid or expired token", "details": str(e)}), 403
         return f(*args, **kwargs)
     return wrapper
@@ -266,7 +194,6 @@ def verify_admin_token(f):
         # First verify the Firebase token
         auth_header = request.headers.get('Authorization', '')
         if not auth_header.startswith('Bearer '):
-            audit_logger.log_security_event("ADMIN_ACCESS_NO_TOKEN", details="No valid Bearer token provided")
             log_admin_action("UNAUTHORIZED_ACCESS_ATTEMPT", "No valid Bearer token provided")
             return jsonify({'error': 'No token provided'}), 401
         
@@ -278,19 +205,13 @@ def verify_admin_token(f):
             admin_email = os.getenv('ADMIN_EMAIL', 'admin@send2290.com')  # Use environment variable
             admin_emails = [admin_email, 'admin@send2290.com']  # Fallback admin
             
-            user_email = decoded_token.get('email')
-            if user_email not in admin_emails:
-                audit_logger.log_security_event("UNAUTHORIZED_ADMIN_ACCESS", user_email, f"Non-admin user attempted admin access")
-                log_admin_action("UNAUTHORIZED_ACCESS_ATTEMPT", f"Non-admin user {user_email} attempted admin access")
+            if decoded_token.get('email') not in admin_emails:
+                log_admin_action("UNAUTHORIZED_ACCESS_ATTEMPT", f"Non-admin user {decoded_token.get('email')} attempted admin access")
                 return jsonify({'error': 'Admin access required'}), 403
-            
-            # Log successful admin authentication
-            audit_logger.log_login_attempt(user_email, success=True)
-            audit_logger.log_security_event("ADMIN_ACCESS_GRANTED", user_email, f"Admin access granted to {user_email}")
+                
             request.user = decoded_token
             return f(*args, **kwargs)
         except Exception as e:
-            audit_logger.log_security_event("ADMIN_INVALID_TOKEN", details=f"Invalid admin token: {str(e)}")
             log_admin_action("INVALID_TOKEN_ATTEMPT", f"Invalid token: {str(e)}")
             return jsonify({'error': 'Invalid token'}), 401
     return decorated
@@ -304,7 +225,9 @@ def index():
 def protected():
     return jsonify({"message": f"Hello, {request.user.get('email')}!"}), 200
 
-# Add user logging to build-xml endpoint
+# Initialize the enhanced logger
+irs_audit = IRS2290AuditLogger()
+
 @app.route("/build-xml", methods=["POST", "OPTIONS"])
 @verify_firebase_token
 def generate_xml():
@@ -350,24 +273,12 @@ def generate_xml():
             if isinstance(xml_data, bytes):
                 xml_data = xml_data.decode('utf-8', errors='ignore')
 
-            # Create submission record first to get ID for new folder structure
-            submission = Submission(
-                user_uid=request.user['uid'],
-                month=month,
-                form_data=json.dumps(month_data)
-            )
-            db.add(submission)
-            db.commit()
-            db.refresh(submission)
-
-            # Use submission ID for S3 folder structure
-            xml_key = f"submission_{submission.id}/form2290.xml"
-            
             # Save XML file with month identifier
             xml_path = os.path.join(os.path.dirname(__file__), f"form2290_{month}.xml")
             with open(xml_path, "w", encoding="utf-8") as f:
                 f.write(xml_data)
 
+            xml_key = f"{request.user['uid']}/{month}/form2290.xml"
             try:
                 with open(xml_path, 'rb') as xml_file:
                     s3.put_object(
@@ -376,13 +287,19 @@ def generate_xml():
                         Body=xml_file,
                         ServerSideEncryption='aws:kms'
                     )
-                
-                # Update submission with S3 key after successful upload
-                submission.xml_s3_key = xml_key
-                db.commit()
-                
             except Exception as e:
                 app.logger.error("S3 XML upload failed for month %s: %s", month, e, exc_info=True)
+
+            # Create submission record for this month
+            submission = Submission(
+                user_uid=request.user['uid'],
+                month=month,
+                xml_s3_key=xml_key,
+                form_data=json.dumps(month_data)
+            )
+            db.add(submission)
+            db.commit()
+            db.refresh(submission)
 
             db.add(FilingsDocument(
                 filing_id=submission.id,
@@ -402,33 +319,17 @@ def generate_xml():
 
         db.commit()
         
-        # Log form submissions for each month
-        user_email = request.user.get('email', 'Unknown')
-        total_vehicles = len(data.get('vehicles', []))
-        
-        for submission_data in created_submissions:
-            try:
-                audit_logger.log_form_submission(
-                    user_email=user_email,
-                    ein=data.get('ein'),
-                    tax_year=data.get('tax_year', '2025'),
-                    month=submission_data['month'],
-                    vehicle_count=submission_data['vehicle_count'],
-                    submission_id=submission_data['id']
-                )
-            except Exception as e:
-                app.logger.error(f"Form submission audit logging failed: {e}")
-        
-        # Log overall submission activity
+        # ADD THIS - Log user submission
         try:
-            audit_logger.log_data_access(
-                user_email=user_email,
-                action='CREATE_SUBMISSION',
-                data_type='FORM_2290',
-                record_count=len(created_submissions)
+            irs_audit.log_user_action(
+                user_id=request.user['uid'],
+                action='FORM_SUBMISSION',
+                form_data=data,
+                ein=data.get('ein'),
+                tax_year=data.get('tax_year', '2025')
             )
         except Exception as e:
-            app.logger.error(f"Data access audit logging failed: {e}")
+            app.logger.error(f"Enhanced audit logging failed: {e}")
     
     finally:
         db.close()
@@ -436,29 +337,17 @@ def generate_xml():
 @app.route("/download-xml", methods=["GET"])
 @verify_firebase_token
 def download_xml():
-    user_email = request.user.get('email', 'Unknown')
     xml_path = os.path.join(os.path.dirname(__file__), "form2290.xml")
-    
     if not os.path.exists(xml_path):
-        audit_logger.log_error_event(
-            user_email=user_email,
-            error_type='FILE_NOT_FOUND',
-            error_message='XML file not generated yet',
-            endpoint='/download-xml'
-        )
         return jsonify({"error": "XML not generated yet"}), 404
-    
-    # Log document access
-    audit_logger.log_document_access(
-        user_email=user_email,
-        action='DOWNLOAD',
-        document_type='XML'
-    )
-    
     return send_file(xml_path, mimetype="application/xml", as_attachment=True)
 
 @app.route('/download-pdf', methods=['POST'])
 def download_pdf():
+    """
+    Legacy PDF generation route - uses hardcoded positions for simple centered layout.
+    For production forms, use /build-pdf which uses dynamic positions from form_positions.json
+    """
     data = request.get_json() or {}
     if not data.get("business_name") or not data.get("ein"):
         return jsonify({"error": "Missing business_name or ein"}), 400
@@ -569,11 +458,6 @@ def build_pdf():
     
     data = request.get_json() or {}
 
-    # Verify CAPTCHA first
-    captcha_token = data.get('captchaToken')
-    if not verify_recaptcha(captcha_token):
-        return jsonify({"error": "CAPTCHA verification failed. Please try again."}), 400
-
     if not data.get("business_name") or not data.get("ein"):
         return jsonify({"error": "Missing business_name or ein"}), 400
 
@@ -680,19 +564,7 @@ def build_pdf():
             if isinstance(xml_data, bytes):
                 xml_data = xml_data.decode('utf-8', errors='ignore')
 
-            # Create submission record first to get ID for new folder structure
-            submission = Submission(
-                user_uid=user_uid,
-                month=month,
-                form_data=json.dumps(month_data)
-            )
-            db.add(submission)
-            db.commit()
-            db.refresh(submission)
-            filing_id = submission.id
-
-            # Use submission ID for S3 folder structure
-            xml_key = f"submission_{filing_id}/form2290.xml"
+            xml_key = f"{user_uid}/{month}/form2290.xml"
             xml_path = os.path.join(os.path.dirname(__file__), f"form2290_{month}.xml")
             with open(xml_path, "w", encoding="utf-8") as f:
                 f.write(xml_data)
@@ -706,13 +578,20 @@ def build_pdf():
                         Body=xml_file,
                         ServerSideEncryption='aws:kms'
                     )
-                
-                # Update submission with S3 key after successful upload
-                submission.xml_s3_key = xml_key
-                db.commit()
-                
             except Exception as e:
                 app.logger.error("S3 XML upload failed for month %s: %s", month, e, exc_info=True)
+
+            # Create submission record
+            submission = Submission(
+                user_uid=user_uid,
+                month=month,
+                xml_s3_key=xml_key,
+                form_data=json.dumps(month_data)
+            )
+            db.add(submission)
+            db.commit()
+            db.refresh(submission)
+            filing_id = submission.id
 
             # Add XML document record
             db.add(FilingsDocument(
@@ -724,49 +603,473 @@ def build_pdf():
             ))
             db.commit()
 
-            # Generate PDF for this month
+            # Generate PDF for this month using multi-page field positioning
             writer = PdfWriter()
-            overlays = []
 
-            for pg_idx in range(len(template.pages)):
-                if pg_idx == 0:
-                    packet = io.BytesIO()
-                    can = canvas.Canvas(packet, pagesize=letter)
+            # Process each page in the template (like the test PDF function)
+            for page_num in range(1, len(template.pages) + 1):
+                print(f"Processing page {page_num} for month {month}")
+                
+                # Create overlay for this page
+                packet = io.BytesIO()
+                can = canvas.Canvas(packet, pagesize=letter)
+                
+                # Get all fields that should appear on this page
+                fields_on_page = []
+                for field_name, field_data in FORM_POSITIONS.items():
+                    # Skip special field types that don't have pages array
+                    if "x" not in field_data or "y" not in field_data:
+                        continue
+                        
+                    # Handle both old single page format and new pages array format
+                    field_pages = []
+                    if "pages" in field_data and isinstance(field_data["pages"], list):
+                        field_pages = field_data["pages"]
+                    elif "page" in field_data:
+                        field_pages = [field_data["page"]]
+                    else:
+                        field_pages = [1]  # Default to page 1
                     
-                    # Business Name (larger font)
-                    can.setFont("Helvetica-Bold", 16)
-                    can.drawCentredString(306, 396, data.get("business_name", ""))
+                    if page_num in field_pages:
+                        fields_on_page.append(field_name)
+                
+                print(f"Fields on page {page_num}: {fields_on_page}")
+                
+                # Render fields for this page
+                for field_name in fields_on_page:
+                    field_data = FORM_POSITIONS[field_name]
                     
-                    # Address
-                    can.setFont("Helvetica", 14)
-                    can.drawCentredString(306, 376, data.get("address", ""))
+                    # Skip fields that don't have x,y coordinates (special field types)
+                    if "x" not in field_data or "y" not in field_data:
+                        print(f"Skipping special field type: {field_name}")
+                        continue
                     
-                    # EIN
-                    can.drawCentredString(306, 356, f"EIN: {data.get('ein', '')}")
+                    # Get position for this specific page (handle page-specific positions)
+                    pos_x = field_data["x"]
+                    pos_y = field_data["y"] 
+                    x_positions = field_data.get("x_positions")
                     
-                    # Month-specific information
-                    can.setFont("Helvetica-Bold", 12)
-                    can.drawCentredString(306, 336, f"Month: {month}")
+                    # Check for page-specific position overrides
+                    if "pagePositions" in field_data and str(page_num) in field_data["pagePositions"]:
+                        page_override = field_data["pagePositions"][str(page_num)]
+                        if "x" in page_override:
+                            pos_x = page_override["x"]
+                        if "y" in page_override:
+                            pos_y = page_override["y"]
+                        if "x_positions" in page_override:
+                            x_positions = page_override["x_positions"]
                     
-                    # Total Tax Amount for this month
-                    can.setFont("Helvetica-Bold", 14)
-                    can.drawCentredString(306, 316, f"Total Tax: ${total_tax:,.2f}")
+                    # Apply offsets
+                    pdf_x_offset = field_data.get("pdf_x_offset", 0)
+                    pdf_y_offset = field_data.get("pdf_y_offset", 0)
                     
-                    # Vehicle Count for this month
-                    can.setFont("Helvetica", 12)
-                    can.drawCentredString(306, 296, f"Vehicles: {len(month_vehicles)}")
+                    can.setFont(field_data["font"], field_data["size"])
                     
-                    can.save()
-                    packet.seek(0)
-                    overlay_page = PdfReader(packet).pages[0]
-                    overlays.append(overlay_page)
-                else:
-                    overlays.append(None)
-
-            for idx, page in enumerate(template.pages):
-                if overlays[idx]:
-                    page.merge_page(overlays[idx])
-                writer.add_page(page)
+                    # Render based on field type
+                    if field_name == "tax_year":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, data.get("tax_year", "2025"))
+                        
+                    elif field_name == "business_name":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, data.get("business_name", ""))
+                        
+                    elif field_name == "address":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, data.get("address", ""))
+                        
+                    elif field_name == "city_state_zip":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        city = data.get("city", "")
+                        state = data.get("state", "")
+                        zip_code = data.get("zip", "")
+                        city_state_zip = f"{city}, {state} {zip_code}"
+                        can.drawString(final_x, final_y, city_state_zip)
+                        
+                    elif field_name == "ein_digits" and x_positions:
+                        ein = data.get("ein", "").replace("-", "")
+                        for i, digit in enumerate(ein):
+                            if i < len(x_positions):
+                                final_x = x_positions[i] + pdf_x_offset
+                                final_y = pos_y + pdf_y_offset
+                                can.drawString(final_x, final_y, digit)
+                    
+                    # NEW FIELDS - Address fields
+                    elif field_name == "address_line2":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, data.get("address_line2", ""))
+                        
+                    elif field_name == "business_name_line2":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, data.get("business_name_line2", ""))
+                        
+                    elif field_name == "city":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, data.get("city", ""))
+                        
+                    elif field_name == "state":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, data.get("state", ""))
+                        
+                    elif field_name == "zip":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, data.get("zip", ""))
+                    
+                    # Amendment fields
+                    elif field_name == "amended_month":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, data.get("amended_month", ""))
+                        
+                    elif field_name == "reasonable_cause_explanation":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, data.get("reasonable_cause_explanation", ""))
+                        
+                    elif field_name == "vin_correction_explanation":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, data.get("vin_correction_explanation", ""))
+                        
+                    elif field_name == "special_conditions":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, data.get("special_conditions", ""))
+                    
+                    # Officer information
+                    elif field_name == "officer_name":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, data.get("officer_name", ""))
+                        
+                    elif field_name == "officer_title":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, data.get("officer_title", ""))
+                        
+                    elif field_name == "officer_ssn":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        ssn = data.get("officer_ssn", "")
+                        # Format SSN with dashes for display
+                        if len(ssn) == 9 and ssn.isdigit():
+                            ssn = f"{ssn[:3]}-{ssn[3:5]}-{ssn[5:]}"
+                        can.drawString(final_x, final_y, ssn)
+                        
+                    elif field_name == "taxpayer_pin":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, data.get("taxpayer_pin", ""))
+                        
+                    elif field_name == "tax_credits":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        credits = float(data.get("tax_credits", 0))
+                        can.drawRightString(final_x, final_y, f"{credits:.2f}")
+                    
+                    # Preparer information
+                    elif field_name == "preparer_name":
+                        if data.get("include_preparer", False):
+                            final_x = pos_x + pdf_x_offset
+                            final_y = pos_y + pdf_y_offset
+                            can.drawString(final_x, final_y, data.get("preparer_name", ""))
+                        
+                    elif field_name == "preparer_ptin":
+                        if data.get("include_preparer", False):
+                            final_x = pos_x + pdf_x_offset
+                            final_y = pos_y + pdf_y_offset
+                            can.drawString(final_x, final_y, data.get("preparer_ptin", ""))
+                        
+                    elif field_name == "preparer_phone":
+                        if data.get("include_preparer", False):
+                            final_x = pos_x + pdf_x_offset
+                            final_y = pos_y + pdf_y_offset
+                            can.drawString(final_x, final_y, data.get("preparer_phone", ""))
+                        
+                    elif field_name == "date_prepared":
+                        if data.get("include_preparer", False):
+                            final_x = pos_x + pdf_x_offset
+                            final_y = pos_y + pdf_y_offset
+                            can.drawString(final_x, final_y, data.get("date_prepared", ""))
+                        
+                    elif field_name == "preparer_firm_name":
+                        if data.get("include_preparer", False):
+                            final_x = pos_x + pdf_x_offset
+                            final_y = pos_y + pdf_y_offset
+                            can.drawString(final_x, final_y, data.get("preparer_firm_name", ""))
+                        
+                    elif field_name == "preparer_firm_ein":
+                        if data.get("include_preparer", False):
+                            final_x = pos_x + pdf_x_offset
+                            final_y = pos_y + pdf_y_offset
+                            ein = data.get("preparer_firm_ein", "")
+                            # Format EIN with dash for display
+                            if len(ein) == 9 and ein.isdigit():
+                                ein = f"{ein[:2]}-{ein[2:]}"
+                            can.drawString(final_x, final_y, ein)
+                        
+                    elif field_name == "preparer_firm_address":
+                        if data.get("include_preparer", False):
+                            final_x = pos_x + pdf_x_offset
+                            final_y = pos_y + pdf_y_offset
+                            can.drawString(final_x, final_y, data.get("preparer_firm_address", ""))
+                        
+                    elif field_name == "preparer_firm_citystatezip":
+                        if data.get("include_preparer", False):
+                            final_x = pos_x + pdf_x_offset
+                            final_y = pos_y + pdf_y_offset
+                            can.drawString(final_x, final_y, data.get("preparer_firm_citystatezip", ""))
+                        
+                    elif field_name == "preparer_firm_phone":
+                        if data.get("include_preparer", False):
+                            final_x = pos_x + pdf_x_offset
+                            final_y = pos_y + pdf_y_offset
+                            can.drawString(final_x, final_y, data.get("preparer_firm_phone", ""))
+                    
+                    # Third party designee information
+                    elif field_name == "designee_name":
+                        if data.get("consent_to_disclose", False):
+                            final_x = pos_x + pdf_x_offset
+                            final_y = pos_y + pdf_y_offset
+                            can.drawString(final_x, final_y, data.get("designee_name", ""))
+                        
+                    elif field_name == "designee_phone":
+                        if data.get("consent_to_disclose", False):
+                            final_x = pos_x + pdf_x_offset
+                            final_y = pos_y + pdf_y_offset
+                            can.drawString(final_x, final_y, data.get("designee_phone", ""))
+                        
+                    elif field_name == "designee_pin":
+                        if data.get("consent_to_disclose", False):
+                            final_x = pos_x + pdf_x_offset
+                            final_y = pos_y + pdf_y_offset
+                            can.drawString(final_x, final_y, data.get("designee_pin", ""))
+                    
+                    # Signature fields
+                    elif field_name == "signature":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, data.get("signature", ""))
+                        
+                    elif field_name == "printed_name":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, data.get("printed_name", ""))
+                        
+                    elif field_name == "signature_date":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, data.get("signature_date", ""))
+                    
+                    # Payment fields
+                    elif field_name == "eftps_routing":
+                        if data.get("payEFTPS", False):
+                            final_x = pos_x + pdf_x_offset
+                            final_y = pos_y + pdf_y_offset
+                            can.drawString(final_x, final_y, data.get("eftps_routing", ""))
+                        
+                    elif field_name == "eftps_account":
+                        if data.get("payEFTPS", False):
+                            final_x = pos_x + pdf_x_offset
+                            final_y = pos_y + pdf_y_offset
+                            can.drawString(final_x, final_y, data.get("eftps_account", ""))
+                        
+                    elif field_name == "account_type":
+                        if data.get("payEFTPS", False):
+                            final_x = pos_x + pdf_x_offset
+                            final_y = pos_y + pdf_y_offset
+                            can.drawString(final_x, final_y, data.get("account_type", ""))
+                        
+                    elif field_name == "payment_date":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, data.get("payment_date", ""))
+                        
+                    elif field_name == "taxpayer_phone":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, data.get("taxpayer_phone", ""))
+                    
+                    # Credit card payment fields
+                    elif field_name == "card_holder":
+                        if data.get("payCard", False):
+                            final_x = pos_x + pdf_x_offset
+                            final_y = pos_y + pdf_y_offset
+                            can.drawString(final_x, final_y, data.get("card_holder", ""))
+                        
+                    elif field_name == "card_number":
+                        if data.get("payCard", False):
+                            final_x = pos_x + pdf_x_offset
+                            final_y = pos_y + pdf_y_offset
+                            # Mask card number for security (show only last 4 digits)
+                            card_num = data.get("card_number", "")
+                            if len(card_num) > 4:
+                                masked = "*" * (len(card_num) - 4) + card_num[-4:]
+                                can.drawString(final_x, final_y, masked)
+                            else:
+                                can.drawString(final_x, final_y, card_num)
+                        
+                    elif field_name == "card_exp":
+                        if data.get("payCard", False):
+                            final_x = pos_x + pdf_x_offset
+                            final_y = pos_y + pdf_y_offset
+                            can.drawString(final_x, final_y, data.get("card_exp", ""))
+                        
+                    elif field_name == "card_cvv":
+                        if data.get("payCard", False):
+                            final_x = pos_x + pdf_x_offset
+                            final_y = pos_y + pdf_y_offset
+                            # Don't render CVV for security
+                            can.drawString(final_x, final_y, "***")
+                    
+                    # Email field
+                    elif field_name == "email":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, data.get("email", ""))
+                        
+                    elif field_name == "used_on_july":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, data.get("used_on_july", ""))
+                    
+                    # Additional checkbox fields
+                    elif field_name == "checkbox_has_disposals":
+                        if data.get("has_disposals", False):
+                            final_x = pos_x + pdf_x_offset
+                            final_y = pos_y + pdf_y_offset
+                            can.drawString(final_x, final_y, "X")
+                            
+                    elif field_name == "checkbox_preparer_self_employed":
+                        if data.get("include_preparer", False) and data.get("preparer_self_employed", False):
+                            final_x = pos_x + pdf_x_offset
+                            final_y = pos_y + pdf_y_offset
+                            can.drawString(final_x, final_y, "X")
+                            
+                    elif field_name == "checkbox_consent_to_disclose":
+                        if data.get("consent_to_disclose", False):
+                            final_x = pos_x + pdf_x_offset
+                            final_y = pos_y + pdf_y_offset
+                            can.drawString(final_x, final_y, "X")
+                            
+                    elif field_name == "checkbox_payEFTPS":
+                        if data.get("payEFTPS", False):
+                            final_x = pos_x + pdf_x_offset
+                            final_y = pos_y + pdf_y_offset
+                            can.drawString(final_x, final_y, "X")
+                            
+                    elif field_name == "checkbox_payCard":
+                        if data.get("payCard", False):
+                            final_x = pos_x + pdf_x_offset
+                            final_y = pos_y + pdf_y_offset
+                            can.drawString(final_x, final_y, "X")
+                    
+                    elif field_name.startswith("checkbox_"):
+                        # Handle checkboxes
+                        should_check = False
+                        if field_name == "checkbox_address_change":
+                            should_check = data.get("address_change", False)
+                        elif field_name == "checkbox_vin_correction":
+                            should_check = data.get("vin_correction", False)
+                        elif field_name == "checkbox_amended_return":
+                            should_check = data.get("amended_return", False)
+                        elif field_name == "checkbox_final_return":
+                            should_check = data.get("final_return", False)
+                        
+                        if should_check:
+                            final_x = pos_x + pdf_x_offset
+                            final_y = pos_y + pdf_y_offset
+                            can.drawString(final_x, final_y, "X")
+                    
+                    elif field_name == "month_checkboxes":
+                        # Handle month checkboxes
+                        month_last_two = month[-2:] if len(month) >= 2 else '07'
+                        if month_last_two in field_data:
+                            month_pos = field_data[month_last_two]
+                            final_x = month_pos["x"] + pdf_x_offset
+                            final_y = month_pos["y"] + pdf_y_offset
+                            can.drawString(final_x, final_y, "X")
+                    
+                    elif field_name == "vehicle_categories":
+                        # Handle vehicle category counts
+                        weight_counts = {}
+                        for vehicle in month_vehicles:
+                            category = vehicle.get('category', '')
+                            if category:
+                                weight_counts[category] = weight_counts.get(category, 0) + 1
+                        
+                        # Draw vehicle counts in appropriate category boxes
+                        for category, count in weight_counts.items():
+                            if category in field_data:
+                                cat_pos = field_data[category]
+                                final_x = cat_pos["x"] + pdf_x_offset
+                                final_y = cat_pos["y"] + pdf_y_offset
+                                can.drawString(final_x, final_y, str(count))
+                    
+                    elif field_name == "tax_lines":
+                        # Handle tax calculation lines
+                        if "line1_vehicles" in field_data:
+                            line1_pos = field_data["line1_vehicles"]
+                            final_x = line1_pos["x"] + pdf_x_offset
+                            final_y = line1_pos["y"] + pdf_y_offset
+                            can.setFont(line1_pos["font"], line1_pos["size"])
+                            can.drawRightString(final_x, final_y, str(len(month_vehicles)))
+                        
+                        if "line2_tax" in field_data:
+                            line2_pos = field_data["line2_tax"]
+                            final_x = line2_pos["x"] + pdf_x_offset
+                            final_y = line2_pos["y"] + pdf_y_offset
+                            can.setFont(line2_pos["font"], line2_pos["size"])
+                            can.drawRightString(final_x, final_y, f"{total_tax:.2f}")
+                        
+                        if "line3_increase" in field_data:
+                            line3_pos = field_data["line3_increase"]
+                            final_x = line3_pos["x"] + pdf_x_offset
+                            final_y = line3_pos["y"] + pdf_y_offset
+                            can.setFont(line3_pos["font"], line3_pos["size"])
+                            can.drawRightString(final_x, final_y, "0.00")
+                        
+                        if "line4_total" in field_data:
+                            line4_pos = field_data["line4_total"]
+                            final_x = line4_pos["x"] + pdf_x_offset
+                            final_y = line4_pos["y"] + pdf_y_offset
+                            can.setFont(line4_pos["font"], line4_pos["size"])
+                            can.drawRightString(final_x, final_y, f"{total_tax:.2f}")
+                        
+                        if "line5_credits" in field_data:
+                            line5_pos = field_data["line5_credits"]
+                            final_x = line5_pos["x"] + pdf_x_offset
+                            final_y = line5_pos["y"] + pdf_y_offset
+                            can.setFont(line5_pos["font"], line5_pos["size"])
+                            credits = float(data.get("tax_credits", 0))
+                            can.drawRightString(final_x, final_y, f"{credits:.2f}")
+                        
+                        if "line6_balance" in field_data:
+                            line6_pos = field_data["line6_balance"]
+                            final_x = line6_pos["x"] + pdf_x_offset
+                            final_y = line6_pos["y"] + pdf_y_offset
+                            can.setFont(line6_pos["font"], line6_pos["size"])
+                            credits = float(data.get("tax_credits", 0))
+                            balance_due = max(0, total_tax - credits)
+                            can.drawRightString(final_x, final_y, f"{balance_due:.2f}")
+                
+                can.save()
+                packet.seek(0)
+                
+                # Create overlay page and merge with template page
+                overlay_page = PdfReader(packet).pages[0]
+                template_page = template.pages[page_num - 1]  # 0-indexed
+                template_page.merge_page(overlay_page)
+                writer.add_page(template_page)
 
             # Save PDF with month identifier
             out_dir = os.path.join(os.path.dirname(__file__), "output")
@@ -775,8 +1078,8 @@ def build_pdf():
             with open(out_path, "wb") as f:
                 writer.write(f)
 
-            # Upload PDF to S3 using submission ID structure
-            pdf_key = f"submission_{filing_id}/form2290.pdf"
+            # Upload PDF to S3
+            pdf_key = f"{user_uid}/{month}/form2290.pdf"
             try:
                 with open(out_path, 'rb') as pf:
                     s3.put_object(
@@ -924,8 +1227,6 @@ def admin_view_submissions():
     Admin endpoint to view all submissions with user information.
     IRS compliance: Only authorized personnel can access taxpayer data.
     """
-    user_email = request.user.get('email', 'Unknown')
-    
     try:
         db = SessionLocal()
         try:
@@ -933,21 +1234,6 @@ def admin_view_submissions():
             submissions = db.query(Submission).order_by(Submission.created_at.desc()).all()
             
             print(f"🔍 ADMIN DEBUG: Found {len(submissions)} total submissions in database")
-            
-            # Log admin data access
-            audit_logger.log_data_access(
-                user_email=user_email,
-                action='VIEW_ALL_SUBMISSIONS',
-                data_type='SUBMISSIONS',
-                record_count=len(submissions)
-            )
-            
-            audit_logger.log_admin_action(
-                user_email=user_email,
-                action='VIEW_ALL_SUBMISSIONS',
-                details=f'Retrieved {len(submissions)} submissions'
-            )
-            
             for i, s in enumerate(submissions[:5]):  # Show first 5
                 print(f"  {i+1}. ID={s.id}, Month={s.month}, User={s.user_uid[:8]}..., Created={s.created_at}")
             
@@ -1044,62 +1330,25 @@ def admin_delete_submission(submission_id):
     Secure endpoint to delete test submissions and associated files.
     Includes S3 cleanup and proper audit logging.
     """
-    user_email = request.user.get('email', 'Unknown')
-    
-    # Log the deletion attempt
-    audit_logger.log_admin_action(
-        user_email=user_email,
-        action='DELETE_SUBMISSION_ATTEMPT',
-        details=f'Attempting to delete submission ID: {submission_id}'
-    )
     log_admin_action("DELETE_SUBMISSION", f"Attempting to delete submission ID: {submission_id}")
-    
     db = SessionLocal()
     try:
-        # Get submission details for logging before deletion
-        submission = db.query(Submission).get(submission_id)
-        if not submission:
-            audit_logger.log_error_event(
-                user_email=user_email,
-                error_type='SUBMISSION_NOT_FOUND',
-                error_message=f'Submission {submission_id} not found for deletion',
-                endpoint='/admin/submissions/delete'
-            )
-            log_admin_action("DELETE_ERROR", f"Submission {submission_id} not found for deletion")
-            return jsonify({"error": "Submission not found"}), 404
-        
-        # Extract EIN for logging
-        form_data = {}
-        if submission.form_data:
-            try:
-                form_data = json.loads(submission.form_data)
-            except:
-                pass
-        
-        ein = form_data.get('ein', 'Unknown')
-        
         # Delete related documents first
         docs = db.query(FilingsDocument).filter(FilingsDocument.filing_id == submission_id).all()
         for doc in docs:
             try:
                 s3.delete_object(Bucket=BUCKET, Key=doc.s3_key)
-                audit_logger.log_document_access(
-                    user_email=user_email,
-                    action='DELETE',
-                    document_type=doc.document_type.upper(),
-                    document_id=doc.id,
-                    ein=ein
-                )
                 log_admin_action("S3_DELETE", f"Deleted S3 object: {doc.s3_key}")
             except Exception as e:
-                audit_logger.log_error_event(
-                    user_email=user_email,
-                    error_type='S3_DELETE_FAILED',
-                    error_message=f'Failed to delete S3 object {doc.s3_key}: {str(e)}',
-                    endpoint='/admin/submissions/delete'
-                )
                 app.logger.warning(f"Failed to delete S3 object {doc.s3_key}: {e}")
             db.delete(doc)
+        
+        # Delete submission
+        submission = db.query(Submission).get(submission_id)
+        if not submission:
+            db.rollback()
+            log_admin_action("DELETE_ERROR", f"Submission {submission_id} not found for deletion")
+            return jsonify({"error": "Submission not found"}), 404
         
         # Delete S3 files
         if submission.xml_s3_key:
@@ -1196,14 +1445,18 @@ def admin_download_file(submission_id, file_type):
         if not submission:
             return jsonify({"error": "Submission not found"}), 404
         
-        # Use fallback function to get correct S3 key
-        s3_key = get_s3_key_with_fallback(submission, file_type)
+        s3_key = None
+        content_type = None
+        
+        if file_type.lower() == "pdf" and submission.pdf_s3_key:
+            s3_key = submission.pdf_s3_key
+            content_type = "application/pdf"
+        elif file_type.lower() == "xml" and submission.xml_s3_key:
+            s3_key = submission.xml_s3_key
+            content_type = "application/xml"
         
         if not s3_key:
             return jsonify({"error": f"{file_type.upper()} file not found"}), 404
-        
-        # Set content type based on file type
-        content_type = "application/pdf" if file_type.lower() == "pdf" else "application/xml"
         
         # Download from S3 - CHANGE FILES_BUCKET to BUCKET
         try:
@@ -1304,21 +1557,11 @@ def debug_s3_test():
 def user_submissions():
     """Get all submissions for the current user"""
     user_uid = request.user['uid']
-    user_email = request.user.get('email', 'Unknown')
-    
     db = SessionLocal()
     try:
         submissions = db.query(Submission).filter(
             Submission.user_uid == user_uid
         ).order_by(Submission.created_at.desc()).all()
-        
-        # Log user data access
-        audit_logger.log_data_access(
-            user_email=user_email,
-            action='VIEW_USER_SUBMISSIONS',
-            data_type='USER_SUBMISSIONS',
-            record_count=len(submissions)
-        )
         
         submissions_list = []
         for submission in submissions:
@@ -1461,15 +1704,8 @@ def user_documents():
 def download_submission_file(submission_id, file_type):
     """Download PDF or XML file for a specific submission"""
     user_uid = request.user['uid']
-    user_email = request.user.get('email', 'Unknown')
     
     if file_type not in ['pdf', 'xml']:
-        audit_logger.log_error_event(
-            user_email=user_email,
-            error_type='INVALID_FILE_TYPE',
-            error_message=f'Invalid file type requested: {file_type}',
-            endpoint='/user/submissions/download'
-        )
         return jsonify({"error": "Invalid file type. Must be 'pdf' or 'xml'"}), 400
     
     db = SessionLocal()
@@ -1480,45 +1716,13 @@ def download_submission_file(submission_id, file_type):
         ).first()
         
         if not submission:
-            audit_logger.log_security_event(
-                'UNAUTHORIZED_FILE_ACCESS',
-                user_email,
-                f'User attempted to access submission {submission_id} not owned by them'
-            )
             return jsonify({"error": "Submission not found"}), 404
         
-        # Get form data to extract EIN for logging
-        form_data = {}
-        if submission.form_data:
-            try:
-                form_data = json.loads(submission.form_data)
-            except:
-                pass
-        
-        # Get the appropriate S3 key using fallback function
-        xml_s3_key = get_s3_key_with_fallback(submission, 'xml')
-        pdf_s3_key = get_s3_key_with_fallback(submission, 'pdf')
-        
-        # Use the found keys for download
-        s3_key = pdf_s3_key if file_type == 'pdf' else xml_s3_key
+        # Get the appropriate S3 key
+        s3_key = submission.pdf_s3_key if file_type == 'pdf' else submission.xml_s3_key
         
         if not s3_key:
-            audit_logger.log_error_event(
-                user_email=user_email,
-                error_type='FILE_NOT_FOUND',
-                error_message=f'{file_type.upper()} file not found for submission {submission_id}',
-                endpoint='/user/submissions/download'
-            )
             return jsonify({"error": f"{file_type.upper()} file not found for this submission"}), 404
-        
-        # Log document access
-        audit_logger.log_document_access(
-            user_email=user_email,
-            action='DOWNLOAD',
-            document_type=file_type.upper(),
-            document_id=submission_id,
-            ein=form_data.get('ein')
-        )
         
         # Generate presigned URL for download
         try:
@@ -1604,92 +1808,557 @@ def test_connection():
         "timestamp": datetime.datetime.utcnow().isoformat()
     }), 200
 
-@app.route("/admin/audit-logs/<log_type>", methods=["GET"])
+@app.route("/admin/audit-logs", methods=["GET"])
 @verify_admin_token
-def get_audit_logs(log_type):
-    """Get audit logs for specific environment"""
+def download_audit_logs():
+    """Download audit logs for compliance reporting"""
     try:
-        if log_type == 'local':
-            filename = os.path.join('Audit', 'localaudit.log')
-        elif log_type == 'production':
-            filename = os.path.join('Audit', 'productionaudit.log')
-        else:
-            return jsonify({"error": "Invalid log type. Use 'local' or 'production'"}), 400
+        with open('audit.log', 'r') as f:
+            logs = f.read()
         
-        if not os.path.exists(filename):
-            return jsonify({"error": f"Log file {filename} not found"}), 404
+        response = make_response(logs)
+        response.headers['Content-Type'] = 'text/plain'
+        response.headers['Content-Disposition'] = 'attachment; filename=audit.log'
+        return response
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# ============================================
+# POSITION TUNER API ENDPOINTS
+# ============================================
+
+@app.route('/api/positions', methods=['GET'])
+def get_positions():
+    """Get current form field positions"""
+    try:
+        positions_file = os.path.join(os.path.dirname(__file__), "form_positions.json")
+        if os.path.exists(positions_file):
+            with open(positions_file, 'r') as f:
+                positions = json.load(f)
+            return jsonify(positions)
+        else:
+            return jsonify({"error": "Positions file not found"}), 404
+    except Exception as e:
+        audit_logger.error(f"get_positions: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/positions', methods=['POST'])
+def update_positions():
+    """Update form field positions"""
+    global FORM_POSITIONS
+    try:
+        positions = request.get_json()
+        if not positions:
+            return jsonify({"error": "No position data provided"}), 400
+        
+        positions_file = os.path.join(os.path.dirname(__file__), "form_positions.json")
+        with open(positions_file, 'w') as f:
+            json.dump(positions, f, indent=2)
+        
+        # Reload the global FORM_POSITIONS to use updated positions immediately
+        FORM_POSITIONS = load_form_positions()
+        
+        audit_logger.info(f"update_positions: Positions updated and reloaded successfully")
+        return jsonify({"message": "Positions updated and reloaded successfully"})
+    except Exception as e:
+        audit_logger.error(f"update_positions: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/positions/reload', methods=['POST'])
+def reload_positions():
+    """Reload form field positions from file"""
+    global FORM_POSITIONS
+    try:
+        FORM_POSITIONS = load_form_positions()
+        audit_logger.info("reload_positions: Positions reloaded successfully")
+        return jsonify({"message": "Positions reloaded successfully", "positions": FORM_POSITIONS})
+    except Exception as e:
+        audit_logger.error(f"reload_positions: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/generate-test-pdf', methods=['POST'])
+def generate_test_pdf():
+    """Generate a test PDF with current positions for validation using the actual Form 2290 template"""
+    try:
+        # Get test data from request
+        test_data = request.get_json()
+        
+        # Use current form positions
+        positions = FORM_POSITIONS
+        
+        audit_logger.info("generate_test_pdf: Generating test PDF with current positions using actual template")
+        
+        # Load the actual Form 2290 template
+        template_path = os.path.join(os.path.dirname(__file__), "f2290_template.pdf")
+        if not os.path.exists(template_path):
+            return jsonify({"error": "Form template not found"}), 404
             
-        with open(filename, 'r') as f:
-            lines = f.readlines()
-            recent_lines = lines[-100:]  # Last 100 entries
+        try:
+            template = PdfReader(open(template_path, "rb"), strict=False)
+        except Exception as e:
+            return jsonify({"error": f"Could not read template: {str(e)}"}), 500
+
+        writer = PdfWriter()
+        overlays = []
+
+        # Process each page of the template
+        for pg_idx in range(len(template.pages)):
+            if pg_idx == 0:  # Only overlay on first page
+                packet = io.BytesIO()
+                can = canvas.Canvas(packet, pagesize=letter)
+                
+                # === BUSINESS INFORMATION SECTION ===
+                
+                # Set text color to BLACK to ensure visibility
+                can.setFillColorRGB(0, 0, 0)  # Black text
+                
+                # Business Name
+                if 'business_name' in positions and 'business_name' in test_data:
+                    pos = positions['business_name']
+                    can.setFont(pos.get('font', 'Helvetica'), pos.get('size', 10))
+                    # Use coordinates directly (frontend coordinates are already in PDF coordinate system)
+                    pdf_y = pos['y']
+                    can.drawString(pos['x'], pdf_y, str(test_data['business_name']))
+                    
+                    # Add debug marker
+                    can.setFillColorRGB(1, 0, 0)  # Red
+                    can.drawString(pos['x'] - 5, pdf_y + 5, "BN")
+                    can.setFillColorRGB(0, 0, 0)  # Back to black
+                
+                # Address
+                if 'address' in positions and 'address' in test_data:
+                    pos = positions['address']
+                    can.setFont(pos.get('font', 'Helvetica'), pos.get('size', 9))
+                    pdf_y = pos['y']
+                    can.drawString(pos['x'], pdf_y, str(test_data['address']))
+                    
+                    # Add debug marker
+                    can.setFillColorRGB(1, 0, 0)  # Red
+                    can.drawString(pos['x'] - 5, pdf_y + 5, "AD")
+                    can.setFillColorRGB(0, 0, 0)  # Back to black
+                
+                # City, State, ZIP
+                if 'city_state_zip' in positions and 'city_state_zip' in test_data:
+                    pos = positions['city_state_zip']
+                    can.setFont(pos.get('font', 'Helvetica'), pos.get('size', 9))
+                    pdf_y = pos['y']
+                    can.drawString(pos['x'], pdf_y, str(test_data['city_state_zip']))
+                    
+                    # Add debug marker
+                    can.setFillColorRGB(1, 0, 0)  # Red
+                    can.drawString(pos['x'] - 5, pdf_y + 5, "CS")
+                    can.setFillColorRGB(0, 0, 0)  # Back to black
+                
+                # Tax Year
+                if 'tax_year' in positions and 'tax_year' in test_data:
+                    pos = positions['tax_year']
+                    can.setFont(pos.get('font', 'Helvetica-Bold'), pos.get('size', 11))
+                    pdf_y = pos['y']
+                    can.drawString(pos['x'], pdf_y, str(test_data['tax_year']))
+                    
+                    # Add debug marker
+                    can.setFillColorRGB(1, 0, 0)  # Red
+                    can.drawString(pos['x'] - 5, pdf_y + 5, "TY")
+                    can.setFillColorRGB(0, 0, 0)  # Back to black
+                
+                # EIN Digits (individual digit positioning)
+                if 'ein_digits' in positions and 'ein_digits' in test_data:
+                    pos = positions['ein_digits']
+                    ein = str(test_data['ein_digits'])
+                    if 'x_positions' in pos and len(ein) >= len(pos['x_positions']):
+                        can.setFont(pos.get('font', 'Helvetica'), pos.get('size', 10))
+                        pdf_y = pos['y']
+                        for i, x_pos in enumerate(pos['x_positions']):
+                            if i < len(ein):
+                                can.drawString(x_pos, pdf_y, ein[i])
+                        
+                        # Add debug marker for EIN area
+                        can.setFillColorRGB(1, 0, 0)  # Red
+                        can.drawString(pos['x_positions'][0] - 10, pdf_y + 5, "EIN")
+                        can.setFillColorRGB(0, 0, 0)  # Back to black
+                
+                # === CHECKBOXES SECTION ===
+                
+                # Set checkbox color to RED for visibility
+                can.setFillColorRGB(1, 0, 0)  # Red X marks
+                
+                # Address Change checkbox
+                if 'checkbox_address_change' in positions and test_data.get('checkbox_address_change'):
+                    pos = positions['checkbox_address_change']
+                    can.setFont(pos.get('font', 'Helvetica-Bold'), pos.get('size', 10))
+                    pdf_y = pos['y']
+                    can.drawString(pos['x'], pdf_y, "X")
+                
+                # VIN Correction checkbox
+                if 'checkbox_vin_correction' in positions and test_data.get('checkbox_vin_correction'):
+                    pos = positions['checkbox_vin_correction']
+                    can.setFont(pos.get('font', 'Helvetica-Bold'), pos.get('size', 10))
+                    pdf_y = pos['y']
+                    can.drawString(pos['x'], pdf_y, "X")
+                
+                # Amended Return checkbox
+                if 'checkbox_amended_return' in positions and test_data.get('checkbox_amended_return'):
+                    pos = positions['checkbox_amended_return']
+                    can.setFont(pos.get('font', 'Helvetica-Bold'), pos.get('size', 10))
+                    pdf_y = pos['y']
+                    can.drawString(pos['x'], pdf_y, "X")
+                
+                # Final Return checkbox
+                if 'checkbox_final_return' in positions and test_data.get('checkbox_final_return'):
+                    pos = positions['checkbox_final_return']
+                    can.setFont(pos.get('font', 'Helvetica-Bold'), pos.get('size', 10))
+                    pdf_y = pos['y']
+                    can.drawString(pos['x'], pdf_y, "X")
+                
+                # Reset color to black
+                can.setFillColorRGB(0, 0, 0)
+                
+                # === TEST IDENTIFICATION OVERLAY ===
+                # Add a semi-transparent watermark to identify this as a test
+                can.setFillColorRGB(1, 0, 0, alpha=0.3)  # Red with transparency
+                can.setFont('Helvetica-Bold', 48)
+                can.saveState()
+                can.translate(306, 400)  # Center of page
+                can.rotate(45)  # Diagonal
+                can.drawCentredString(0, 0, "TEST PDF")
+                can.restoreState()
+                
+                # Add test generation info in corner
+                can.setFillColorRGB(0, 0, 0)  # Black text
+                can.setFont('Helvetica', 8)
+                timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                can.drawString(400, 750, f"Generated: {timestamp}")
+                can.drawString(400, 740, "Position Tuner Test")
+                
+                can.save()
+                packet.seek(0)
+                overlay_page = PdfReader(packet).pages[0]
+                overlays.append(overlay_page)
+            else:
+                overlays.append(None)
+
+        # Merge overlays with template pages
+        for idx, page in enumerate(template.pages):
+            if overlays[idx]:
+                page.merge_page(overlays[idx])
+            writer.add_page(page)
+
+        # Create the final PDF
+        buffer = io.BytesIO()
+        writer.write(buffer)
+        buffer.seek(0)
+        pdf_data = buffer.getvalue()
+        buffer.close()
+        
+        audit_logger.info("generate_test_pdf: Test PDF with template generated successfully")
+        
+        # Create response
+        response = make_response(pdf_data)
+        response.headers['Content-Type'] = 'application/pdf'
+        response.headers['Content-Disposition'] = f'attachment; filename="test_form2290_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.pdf"'
+        
+        return response
+        
+    except Exception as e:
+        audit_logger.error(f"generate_test_pdf: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/health', methods=['GET'])
+def health_check():
+    """Health check endpoint for position tuner"""
+    return jsonify({"status": "healthy", "timestamp": datetime.datetime.utcnow().isoformat()})
+
+# ============================================
+# ENHANCED POSITION TUNER API ENDPOINTS WITH OFFSET SUPPORT
+# ============================================
+
+@app.route('/api/positions/update-offset', methods=['POST'])
+def update_position_offset():
+    """Update PDF offset values for a specific field"""
+    try:
+        data = request.get_json()
+        field_name = data.get('field_name')
+        x_offset = data.get('x_offset', 0)
+        y_offset = data.get('y_offset', 0)
+        
+        if not field_name:
+            return jsonify({"error": "field_name is required"}), 400
+        
+        # Load current positions
+        positions_file = os.path.join(os.path.dirname(__file__), "form_positions.json")
+        with open(positions_file, 'r') as f:
+            positions = json.load(f)
+        
+        if field_name not in positions:
+            return jsonify({"error": f"Field '{field_name}' not found"}), 404
+        
+        # Update offset values
+        positions[field_name]["pdf_x_offset"] = int(x_offset)
+        positions[field_name]["pdf_y_offset"] = int(y_offset)
+        
+        # Save updated positions
+        with open(positions_file, 'w') as f:
+            json.dump(positions, f, indent=2)
+        
+        # Reload positions in memory
+        global FORM_POSITIONS
+        FORM_POSITIONS = positions
         
         return jsonify({
-            "environment": log_type,
-            "logs": recent_lines,
-            "total_lines": len(lines),
-            "showing_last": len(recent_lines),
-            "filename": filename
+            "success": True,
+            "message": f"Updated PDF offsets for {field_name}",
+            "field": field_name,
+            "pdf_x_offset": x_offset,
+            "pdf_y_offset": y_offset,
+            "final_pdf_x": positions[field_name]["x"] + x_offset,
+            "final_pdf_y": positions[field_name]["y"] + y_offset
         })
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/admin/audit-logs/<log_type>/download", methods=["GET"])
-@verify_admin_token
-def download_audit_logs(log_type):
-    """Download complete audit log file"""
-    try:
-        if log_type == 'local':
-            filename = 'localaudit.log'
-        elif log_type == 'production':
-            filename = 'productionaudit.log'
-        else:
-            return jsonify({"error": "Invalid log type"}), 400
         
-        if not os.path.exists(filename):
-            return jsonify({"error": f"Log file {filename} not found"}), 404
-            
-        return send_file(filename, as_attachment=True, download_name=f'{log_type}_audit_{datetime.now().strftime("%Y%m%d")}.log')
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-def get_s3_key_with_fallback(submission, file_type):
-    """
-    Get S3 key for a file, with fallback to check both old and new structures.
-    This ensures compatibility during the migration period.
-    """
-    if file_type == 'pdf':
-        primary_key = submission.pdf_s3_key
-    else:  # xml
-        primary_key = submission.xml_s3_key
-    
-    # If we have a key in database, check if it exists in S3
-    if primary_key:
-        try:
-            s3.head_object(Bucket=BUCKET, Key=primary_key)
-            return primary_key
-        except:
-            # File doesn't exist at recorded location
-            pass
-    
-    # Try new structure
-    new_key = f"submission_{submission.id}/form2290.{file_type}"
+@app.route('/api/positions/test-pdf', methods=['POST'])
+def test_pdf_with_offsets():
+    """Generate a test PDF with sample data using current offset settings for all pages"""
+    print("=== TEST PDF GENERATION STARTED ===")
     try:
-        s3.head_object(Bucket=BUCKET, Key=new_key)
-        return new_key
-    except:
-        pass
-    
-    # Try old structure if we can reconstruct it
-    if submission.user_uid and submission.month:
-        old_key = f"{submission.user_uid}/{submission.month}/form2290.{file_type}"
-        try:
-            s3.head_object(Bucket=BUCKET, Key=old_key)
-            return old_key
-        except:
-            pass
-    
-    # Return the primary key even if file doesn't exist (for error handling)
-    return primary_key
+        # Sample test data
+        test_data = {
+            "business_name": "TEST COMPANY LLC",
+            "address": "123 Test Street",
+            "city": "Test City",
+            "state": "TX",
+            "zip": "12345",
+            "ein": "123456789",
+            "tax_year": "2025",
+            "address_change": True,
+            "vin_correction": False,
+            "amended_return": False,
+            "final_return": False,
+            "vehicles": [
+                {
+                    "vin": "1HGBH41JXMN109186",
+                    "category": "A",
+                    "used_month": "202507",
+                    "is_logging": False,
+                    "is_suspended": False,
+                    "is_agricultural": False
+                }
+            ]
+        }
+        
+        # Load template
+        template_path = os.path.join(os.path.dirname(__file__), "f2290_template.pdf")
+        print(f"Loading template from: {template_path}")
+        if not os.path.exists(template_path):
+            print("ERROR: Template not found!")
+            return jsonify({"error": "Template not found"}), 500
+            
+            
+        template = PdfReader(open(template_path, "rb"), strict=False)
+        print(f"Template loaded successfully with {len(template.pages)} pages")
+        writer = PdfWriter()
+        
+        # Process each page in the template
+        print(f"Processing {len(template.pages)} pages...")
+        for page_num in range(1, len(template.pages) + 1):
+            print(f"Processing page {page_num}")
+            
+            # Create overlay for this page
+            packet = io.BytesIO()
+            can = canvas.Canvas(packet, pagesize=letter)
+            
+            # Get all fields that should appear on this page
+            fields_on_page = []
+            for field_name, field_data in FORM_POSITIONS.items():
+                # Skip special field types that don't have pages array
+                if "x" not in field_data or "y" not in field_data:
+                    continue
+                    
+                # Handle both old single page format and new pages array format
+                field_pages = []
+                if "pages" in field_data and isinstance(field_data["pages"], list):
+                    field_pages = field_data["pages"]
+                elif "page" in field_data:
+                    field_pages = [field_data["page"]]
+                else:
+                    field_pages = [1]  # Default to page 1
+                
+                if page_num in field_pages:
+                    fields_on_page.append(field_name)
+            
+            print(f"Fields on page {page_num}: {fields_on_page}")
+            
+            # Render fields for this page
+            for field_name in fields_on_page:
+                field_data = FORM_POSITIONS[field_name]
+                
+                # Skip fields that don't have x,y coordinates (special field types)
+                if "x" not in field_data or "y" not in field_data:
+                    print(f"Skipping special field type: {field_name}")
+                    continue
+                
+                # Get position for this specific page (handle page-specific positions)
+                pos_x = field_data["x"]
+                pos_y = field_data["y"] 
+                x_positions = field_data.get("x_positions")
+                
+                # Check for page-specific position overrides
+                if "pagePositions" in field_data and str(page_num) in field_data["pagePositions"]:
+                    page_override = field_data["pagePositions"][str(page_num)]
+                    if "x" in page_override:
+                        pos_x = page_override["x"]
+                    if "y" in page_override:
+                        pos_y = page_override["y"]
+                    if "x_positions" in page_override:
+                        x_positions = page_override["x_positions"]
+                
+                # Apply offsets
+                pdf_x_offset = field_data.get("pdf_x_offset", 0)
+                pdf_y_offset = field_data.get("pdf_y_offset", 0)
+                
+                can.setFont(field_data["font"], field_data["size"])
+                
+                # Render based on field type
+                if field_name == "tax_year":
+                    final_x = pos_x + pdf_x_offset
+                    final_y = pos_y + pdf_y_offset
+                    can.drawString(final_x, final_y, test_data["tax_year"])
+                    
+                elif field_name == "business_name":
+                    final_x = pos_x + pdf_x_offset
+                    final_y = pos_y + pdf_y_offset
+                    can.drawString(final_x, final_y, test_data["business_name"])
+                    
+                elif field_name == "address":
+                    final_x = pos_x + pdf_x_offset
+                    final_y = pos_y + pdf_y_offset
+                    can.drawString(final_x, final_y, test_data["address"])
+                    
+                elif field_name == "city_state_zip":
+                    final_x = pos_x + pdf_x_offset
+                    final_y = pos_y + pdf_y_offset
+                    city_state_zip = f"{test_data['city']}, {test_data['state']} {test_data['zip']}"
+                    can.drawString(final_x, final_y, city_state_zip)
+                    
+                elif field_name == "ein_digits" and x_positions:
+                    ein = test_data["ein"]
+                    for i, digit in enumerate(ein):
+                        if i < len(x_positions):
+                            final_x = x_positions[i] + pdf_x_offset
+                            final_y = pos_y + pdf_y_offset
+                            can.drawString(final_x, final_y, digit)
+                
+                elif field_name.startswith("checkbox_"):
+                    # Test checkboxes
+                    should_check = False
+                    if field_name == "checkbox_address_change":
+                        should_check = test_data.get("address_change", False)
+                    elif field_name == "checkbox_vin_correction":
+                        should_check = test_data.get("vin_correction", False)
+                    elif field_name == "checkbox_amended_return":
+                        should_check = test_data.get("amended_return", False)
+                    elif field_name == "checkbox_final_return":
+                        should_check = test_data.get("final_return", False)
+                    
+                    if should_check:
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, "X")
+                
+                else:
+                    # Generic field rendering with placeholder text
+                    final_x = pos_x + pdf_x_offset
+                    final_y = pos_y + pdf_y_offset
+                    placeholder_text = f"[{field_name.replace('_', ' ').title()}]"
+                    can.drawString(final_x, final_y, placeholder_text)
+            
+            can.save()
+            packet.seek(0)
+            
+            # Create overlay page and merge with template page
+            overlay_page = PdfReader(packet).pages[0]
+            template_page = template.pages[page_num - 1]  # 0-indexed
+            template_page.merge_page(overlay_page)
+            writer.add_page(template_page)
+        
+        # Save test PDF
+        out_dir = os.path.join(os.path.dirname(__file__), "output")
+        os.makedirs(out_dir, exist_ok=True)
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        test_pdf_path = os.path.join(out_dir, f"offset_test_{timestamp}.pdf")
+        
+        with open(test_pdf_path, "wb") as f:
+            writer.write(f)
+        
+        return send_file(test_pdf_path, as_attachment=True, download_name=f"offset_test_{timestamp}.pdf")
+        
+    except Exception as e:
+        print(f"Error generating test PDF: {str(e)}")
+        return jsonify({"error": f"Failed to generate test PDF: {str(e)}"}), 500
+
+@app.route('/api/positions/get-field-info/<field_name>', methods=['GET'])
+def get_field_info(field_name):
+    """Get detailed information about a specific field including offsets"""
+    try:
+        if field_name not in FORM_POSITIONS:
+            return jsonify({"error": f"Field '{field_name}' not found"}), 404
+        
+        field_data = FORM_POSITIONS[field_name]
+        return jsonify({
+            "field_name": field_name,
+            "live_position": {
+                "x": field_data["x"],
+                "y": field_data["y"]
+            },
+            "pdf_offsets": {
+                "x_offset": field_data.get("pdf_x_offset", 0),
+                "y_offset": field_data.get("pdf_y_offset", 0)
+            },
+            "final_pdf_position": {
+                "x": field_data["x"] + field_data.get("pdf_x_offset", 0),
+                "y": field_data["y"] + field_data.get("pdf_y_offset", 0)
+            },
+            "font": field_data["font"],
+            "size": field_data["size"]
+        })
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/positions/reset-offset/<field_name>', methods=['POST'])
+def reset_field_offset(field_name):
+    """Reset PDF offsets for a specific field to zero"""
+    try:
+        positions_file = os.path.join(os.path.dirname(__file__), "form_positions.json")
+        with open(positions_file, 'r') as f:
+            positions = json.load(f)
+        
+        if field_name not in positions:
+            return jsonify({"error": f"Field '{field_name}' not found"}), 404
+        
+        # Reset offsets to zero
+        positions[field_name]["pdf_x_offset"] = 0
+        positions[field_name]["pdf_y_offset"] = 0
+        
+        # Save updated positions
+        with open(positions_file, 'w') as f:
+            json.dump(positions, f, indent=2)
+        
+        # Reload positions in memory
+        global FORM_POSITIONS
+        FORM_POSITIONS = positions
+        
+        return jsonify({
+            "success": True,
+            "message": f"Reset PDF offsets for {field_name}",
+            "field": field_name,
+            "pdf_x_offset": 0,
+            "pdf_y_offset": 0
+        })
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
     print("🔥 Starting Flask development server...")
@@ -1698,10 +2367,17 @@ if __name__ == "__main__":
     
     # Test database connection
     try:
-        with engine.connect() as conn:
-            print("✅ Database connection successful")
+        db = SessionLocal()
+        db.execute(text("SELECT 1"))
+        db.close()
+        print("✅ Database connection successful")
     except Exception as e:
-        print(f"❌ Database connection error: {e}")
-        raise
+        print(f"❌ Database connection failed: {e}")
     
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)), debug=True)
+    print(f"🪣 S3 Bucket: {BUCKET}")
+    print(f"👨‍💼 Admin Email: {os.getenv('ADMIN_EMAIL', 'Not Set')}")
+    
+    try:
+        app.run(host="0.0.0.0", port=5000, debug=True)
+    except Exception as e:
+        print(f"❌ Failed to start server: {e}")

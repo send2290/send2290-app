@@ -117,6 +117,7 @@ export default function Form2290() {
     // Business Officer Information (required for signing)
     officer_name:      '', // Person who signs the return
     officer_title:     '', // Title (President, Owner, Manager, etc.)
+    officer_ssn:       '', // Officer's Social Security Number (required by IRS)
     taxpayer_pin:      '', // 5-digit PIN for electronic signature
     tax_credits:       0,  // Tax credits to apply against liability
     
@@ -126,6 +127,8 @@ export default function Form2290() {
     include_preparer:  false,
     preparer_name:           '',
     preparer_ptin:           '',
+    preparer_phone:          '',
+    preparer_self_employed:  true,
     date_prepared:           '',
     preparer_firm_name:      '',
     preparer_firm_ein:       '',
@@ -238,6 +241,8 @@ export default function Form2290() {
           include_preparer: false,
           preparer_name: '',
           preparer_ptin: '',
+          preparer_phone: '',
+          preparer_self_employed: true,
           date_prepared: '',
           preparer_firm_name: '',
           preparer_firm_ein: '',
@@ -376,6 +381,9 @@ export default function Form2290() {
     if (!formData.business_name.trim()) return 'Business Name is required'
     if (!/^\d{9}$/.test(formData.ein))     return 'EIN must be 9 digits'
     
+    // IRS Business Rule: EIN cannot be all 9s (R0000-021)
+    if (formData.ein === '999999999') return 'EIN cannot be all 9s'
+    
     // Address length validation (IRS requirement: max 35 chars per line)
     if (formData.address.length > 35) return 'Address line 1 cannot exceed 35 characters'
     if (formData.address_line2 && formData.address_line2.length > 35) return 'Address line 2 cannot exceed 35 characters'
@@ -383,14 +391,27 @@ export default function Form2290() {
     // Business officer information validation
     if (!formData.officer_name.trim()) return 'Officer name is required for signing'
     if (!formData.officer_title.trim()) return 'Officer title is required (e.g., President, Owner, Manager)'
+    if (!/^\d{3}-?\d{2}-?\d{4}$/.test(formData.officer_ssn)) return 'Officer SSN must be in format XXX-XX-XXXX or XXXXXXXXX'
     if (!/^\d{5}$/.test(formData.taxpayer_pin)) return 'Taxpayer PIN must be exactly 5 digits'
+    
+    // IRS Business Rule: Taxpayer PIN cannot be all zeros (R0000-031, R0000-084-01)
+    if (formData.taxpayer_pin === '00000') return 'Taxpayer PIN cannot be all zeros'
     
     // Tax credits validation (if provided)
     if (formData.tax_credits < 0) return 'Tax credits cannot be negative'
     
+    // IRS Business Rule F2290-004-01: Credits cannot exceed total tax
+    if (formData.tax_credits > totalTax) return 'Tax credits cannot exceed total tax amount'
+    
     // Amendment validation
     if (formData.amended_return && !formData.amended_month) {
       return 'Month being amended is required for amended returns'
+    }
+    
+    // IRS Business Rule F2290-003-01: TGW increase requires amended return
+    const hasTGWIncrease = formData.vehicles.some(v => v.tgw_increased)
+    if (hasTGWIncrease && !formData.amended_return) {
+      return 'Amended return must be checked when any vehicle has weight category increase'
     }
     
     // VIN correction validation
@@ -398,9 +419,25 @@ export default function Form2290() {
       return 'VIN correction explanation is required'
     }
     
+    // IRS Business Rule F2290-032-01: VIN correction requires at least one VIN
+    if (formData.vin_correction && formData.vehicles.length === 0) {
+      return 'At least one vehicle is required when VIN correction is checked'
+    }
+    
+    // IRS Business Rule F2290-033-01: Amended return requires at least one VIN
+    if (formData.amended_return && formData.vehicles.length === 0) {
+      return 'At least one vehicle is required for amended returns'
+    }
+    
+    // IRS Business Rule F2290-027-01: Non-final returns require at least one VIN
+    if (!formData.final_return && formData.vehicles.length === 0) {
+      return 'At least one vehicle is required unless this is a final return'
+    }
+    
     if (formData.include_preparer) {
       if (!formData.preparer_name.trim())      return 'Preparer Name is required'
       if (!formData.preparer_ptin.trim())      return 'Preparer PTIN is required'
+      if (!/^\d{10}$/.test(formData.preparer_phone.replace(/\D/g, ''))) return 'Preparer Phone must be 10 digits'
       if (!formData.date_prepared)             return 'Date Prepared is required'
       if (!formData.preparer_firm_name.trim()) return 'Firm Name is required'
       if (!/^\d{9}$/.test(formData.preparer_firm_ein)) return 'Firm EIN must be 9 digits'
@@ -450,6 +487,26 @@ export default function Form2290() {
       if (v.vin_corrected && !v.vin_correction_reason?.trim()) {
         return `VIN correction reason is required for vehicle #${idx + 1}`
       }
+    }
+    
+    // IRS Business Rule F2290-017: VIN duplicate validation
+    const vins = formData.vehicles.map(v => v.vin.trim().toUpperCase()).filter(vin => vin)
+    const uniqueVINs = new Set(vins)
+    if (vins.length !== uniqueVINs.size) {
+      return 'Duplicate VINs are not allowed - each vehicle must have a unique VIN'
+    }
+    
+    // IRS Business Rule F2290-008-01: 5000 mile limit requires Category W
+    const has5000MileVehicles = formData.vehicles.some(v => v.mileage_5000_or_less)
+    const hasCategoryW = formData.vehicles.some(v => v.category === 'W')
+    if (has5000MileVehicles && !hasCategoryW) {
+      return 'When 5000 mile limit is used, at least one vehicle must be Category W (Suspended)'
+    }
+    
+    // IRS Business Rule F2290-068: Payment method required when balance due > 0
+    const balanceDue = Math.max(0, totalTax - (formData.tax_credits || 0))
+    if (balanceDue > 0 && !formData.payEFTPS && !formData.payCard) {
+      return 'Payment method (EFTPS or Credit/Debit Card) is required when balance is due'
     }
     return null
   }
@@ -552,15 +609,11 @@ export default function Form2290() {
       if (contentType && contentType.includes('application/json')) {
         // JSON response - multiple months scenario
         const jsonData = await response.json();
+        console.log("📋 JSON response received:", jsonData);
         
-        if (jsonData.success && jsonData.files && jsonData.files.length > 0) {
-          console.log("📋 Multiple files response received:", jsonData);
-          
-          // Show success message without automatic downloads
-          alert(`✅ Form submitted successfully! Generated ${jsonData.total_files} separate PDFs for different months. Visit My Filings section to see your files.`);
-        } else {
-          alert(`✅ Generated ${jsonData.files?.length || 0} separate filings for different months. Visit My Filings section to see your files.`);
-        }
+        // Use the simplified message from the backend
+        const message = jsonData.redirect_message || "Visit My Filings section to see your files.";
+        alert(`✅ ${jsonData.message || "Form submitted successfully"} - ${message}`);
       } else {
         // File download - single PDF
         const blob = await response.blob();
@@ -1231,6 +1284,16 @@ export default function Form2290() {
             title="Title of the person signing this return"
           />
           <input 
+            name="officer_ssn" 
+            placeholder="Officer SSN (XXX-XX-XXXX)" 
+            value={formData.officer_ssn} 
+            onChange={handleChange} 
+            pattern="\d{3}-?\d{2}-?\d{4}"
+            maxLength={11}
+            required
+            title="Social Security Number of the officer signing the return (format: XXX-XX-XXXX)"
+          />
+          <input 
             name="taxpayer_pin" 
             placeholder="Taxpayer PIN (5 digits)" 
             pattern="\d{5}"
@@ -1289,7 +1352,19 @@ export default function Form2290() {
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <input name="preparer_name" placeholder="Preparer Name" value={formData.preparer_name} onChange={handleChange} required />
               <input name="preparer_ptin" placeholder="PTIN" value={formData.preparer_ptin} onChange={handleChange} required />
+              <input name="preparer_phone" placeholder="Phone Number" value={formData.preparer_phone} onChange={handleChange} required />
               <input type="date" name="date_prepared" max={todayStr} value={formData.date_prepared} onChange={handleChange} required />
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 8 }}>
+              <label style={labelSmall}>
+                <input
+                  type="checkbox"
+                  name="preparer_self_employed"
+                  checked={formData.preparer_self_employed}
+                  onChange={handleChange}
+                />
+                <span style={{ cursor: 'pointer' }}>Self Employed</span>
+              </label>
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
               <input name="preparer_firm_name" placeholder="Firm Name" value={formData.preparer_firm_name} onChange={handleChange} required />

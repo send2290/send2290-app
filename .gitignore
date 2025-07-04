@@ -128,3 +128,19 @@ backend/firebase-service-account.json
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# =========================
+# Project-specific ignores
+# =========================
+
+# Integration documentation
+INTEGRATION_COMPLETE.md
+
+# Form position configurations
+backend/form_positions.json
+
+# HTML tools and utilities
+frontend/position-tuner.html
+
+# Test scenarios directory
+scenarios/
