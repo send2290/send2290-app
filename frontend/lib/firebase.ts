@@ -1,12 +1,7 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 
-// 🔍 Debug: verify env-vars are loaded in the browser console
-console.log(
-  "🔑 Firebase Config:",
-  "apiKey=", process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  "authDomain=", process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
-);
+// Firebase configuration - debug logs removed for security
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY!,

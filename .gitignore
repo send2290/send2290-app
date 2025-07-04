@@ -144,3 +144,24 @@ frontend/position-tuner.html
 
 # Test scenarios directory
 scenarios/
+
+# =========================
+# Sensitive Documentation & Implementation Details
+# =========================
+
+# Production deployment guides (contain infrastructure details)
+backend/Audit/PRODUCTION_DEPLOYMENT_GUIDE.md
+backend/Audit/PRODUCTION_IMPLEMENTATION_SUMMARY.md
+
+# Main application files (contain business logic and UI design)
+backend/app.py
+frontend/app/page.tsx
+frontend/app/Form2290.tsx
+
+# Database management scripts
+backend/setup_aws_db.py
+backend/clear_database.py
+backend/check_db.py
+
+# XML builder (contains business logic)
+backend/xml_builder.py
