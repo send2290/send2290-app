@@ -225,9 +225,6 @@ def index():
 def protected():
     return jsonify({"message": f"Hello, {request.user.get('email')}!"}), 200
 
-# Initialize the enhanced logger
-irs_audit = IRS2290AuditLogger()
-
 @app.route("/build-xml", methods=["POST", "OPTIONS"])
 @verify_firebase_token
 def generate_xml():
@@ -319,9 +316,9 @@ def generate_xml():
 
         db.commit()
         
-        # ADD THIS - Log user submission
+        # Log user submission
         try:
-            irs_audit.log_user_action(
+            enhanced_audit.log_user_action(
                 user_id=request.user['uid'],
                 action='FORM_SUBMISSION',
                 form_data=data,
@@ -330,6 +327,28 @@ def generate_xml():
             )
         except Exception as e:
             app.logger.error(f"Enhanced audit logging failed: {e}")
+        
+        # Return success response
+        return jsonify({
+            "success": True,
+            "message": f"Generated XML for {len(created_submissions)} month(s)",
+            "submissions": created_submissions,
+            "total_files": len(created_submissions)
+        }), 200
+    
+    except Exception as e:
+        # Catch-all exception handler to prevent returning None
+        app.logger.error("Unexpected error in build_xml: %s", e, exc_info=True)
+        enhanced_audit.log_error_event(
+            user_email=request.user.get('email', 'unknown'),
+            error_type="XML_PROCESSING_ERROR",
+            error_message=f"Unexpected error during XML submission: {str(e)}",
+            endpoint="/build-xml"
+        )
+        return jsonify({
+            "error": "An unexpected error occurred during XML generation",
+            "details": "Please try again or contact support if the issue persists"
+        }), 500
     
     finally:
         db.close()
@@ -570,6 +589,7 @@ def build_pdf():
                 f.write(xml_data)
 
             # Upload XML to S3
+            s3_upload_success = False
             try:
                 with open(xml_path, 'rb') as xml_file:
                     s3.put_object(
@@ -578,8 +598,16 @@ def build_pdf():
                         Body=xml_file,
                         ServerSideEncryption='aws:kms'
                     )
+                s3_upload_success = True
             except Exception as e:
                 app.logger.error("S3 XML upload failed for month %s: %s", month, e, exc_info=True)
+                enhanced_audit.log_error_event(
+                    user_email=request.user.get('email', 'unknown'),
+                    error_type="S3_UPLOAD_FAILED",
+                    error_message=f"Failed to upload XML to S3: {str(e)}",
+                    endpoint="/build-xml"
+                )
+                # Continue processing but log the failure
 
             # Create submission record
             submission = Submission(
@@ -1080,6 +1108,7 @@ def build_pdf():
 
             # Upload PDF to S3
             pdf_key = f"{user_uid}/{month}/form2290.pdf"
+            pdf_s3_upload_success = False
             try:
                 with open(out_path, 'rb') as pf:
                     s3.put_object(
@@ -1088,8 +1117,16 @@ def build_pdf():
                         Body=pf,
                         ServerSideEncryption='aws:kms'
                     )
+                pdf_s3_upload_success = True
             except Exception as e:
                 app.logger.error("S3 PDF upload failed for month %s: %s", month, e, exc_info=True)
+                enhanced_audit.log_error_event(
+                    user_email=request.user.get('email', 'unknown'),
+                    error_type="S3_UPLOAD_FAILED",
+                    error_message=f"Failed to upload PDF to S3: {str(e)}",
+                    endpoint="/build-pdf"
+                )
+                # Continue processing but note the failure
 
             # Update submission with PDF S3 key
             submission = db.query(Submission).get(filing_id)
@@ -1164,6 +1201,20 @@ def build_pdf():
                 "files": download_info,
                 "total_files": len(created_files)
             }), 200
+    
+    except Exception as e:
+        # Catch-all exception handler to prevent returning None
+        app.logger.error("Unexpected error in build_pdf: %s", e, exc_info=True)
+        enhanced_audit.log_error_event(
+            user_email=request.user.get('email', 'unknown'),
+            error_type="SUBMISSION_PROCESSING_ERROR",
+            error_message=f"Unexpected error during PDF submission: {str(e)}",
+            endpoint="/build-pdf"
+        )
+        return jsonify({
+            "error": "An unexpected error occurred during submission processing",
+            "details": "Please try again or contact support if the issue persists"
+        }), 500
     
     finally:
         db.close()
