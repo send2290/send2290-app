@@ -136,9 +136,6 @@ Thumbs.db
 # Integration documentation
 INTEGRATION_COMPLETE.md
 
-# Form position configurations
-backend/form_positions.json
-
 # HTML tools and utilities
 frontend/position-tuner.html
 
@@ -154,7 +151,6 @@ backend/Audit/PRODUCTION_DEPLOYMENT_GUIDE.md
 backend/Audit/PRODUCTION_IMPLEMENTATION_SUMMARY.md
 
 # Main application files (contain business logic and UI design)
-frontend/app/Form2290.tsx
 
 # Database management scripts
 backend/setup_aws_db.py

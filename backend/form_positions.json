@@ -1,0 +1,787 @@
+{
+  "address": {
+    "font": "Helvetica",
+    "pagePositions": {},
+    "pages": [1, 3],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 9,
+    "x": 101,
+    "y": 592
+  },
+  "address_line2": {
+    "font": "Helvetica",
+    "pagePositions": {},
+    "pages": [1, 3],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 9,
+    "x": 101,
+    "y": 578
+  },
+  "business_name": {
+    "font": "Helvetica",
+    "pagePositions": {},
+    "pages": [1, 3],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 10,
+    "x": 102,
+    "y": 624
+  },
+  "business_name_line2": {
+    "font": "Helvetica",
+    "pagePositions": {},
+    "pages": [1, 3],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 10,
+    "x": 102,
+    "y": 610
+  },
+  "checkbox_address_change": {
+    "font": "Helvetica-Bold",
+    "pagePositions": {},
+    "pages": [
+      1
+    ],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 10,
+    "x": 37,
+    "y": 523
+  },
+  "checkbox_amended_return": {
+    "font": "Helvetica-Bold",
+    "pagePositions": {},
+    "pages": [
+      1
+    ],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 10,
+    "x": 38,
+    "y": 491
+  },
+  "checkbox_final_return": {
+    "font": "Helvetica-Bold",
+    "pagePositions": {},
+    "pages": [
+      1
+    ],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 10,
+    "x": 326,
+    "y": 455
+  },
+  "checkbox_vin_correction": {
+    "font": "Helvetica-Bold",
+    "pagePositions": {},
+    "pages": [
+      1
+    ],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 10,
+    "x": 326,
+    "y": 523
+  },
+  "city_state_zip": {
+    "font": "Helvetica",
+    "pagePositions": {},
+    "pages": [
+      1,
+      3
+    ],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 9,
+    "x": 101,
+    "y": 558
+  },
+  "ein_digits": {
+    "font": "Helvetica",
+    "pagePositions": {},
+    "pages": [
+      1
+    ],
+    "pdf_x_offset": 70,
+    "pdf_y_offset": 54,
+    "size": 10,
+    "x": 419,
+    "x_positions": [
+      355.1111111111111,
+      370.1111111111111,
+      390.1111111111111,
+      405.1111111111111,
+      420.1111111111111,
+      435.1111111111111,
+      450.1111111111111,
+      465.1111111111111,
+      480.1111111111111
+    ],
+    "y": 623
+  },
+  "month_checkboxes": {
+    "10": {
+      "x": 250,
+      "y": 558
+    },
+    "11": {
+      "x": 295,
+      "y": 558
+    },
+    "12": {
+      "x": 340,
+      "y": 558
+    },
+    "01": {
+      "x": 385,
+      "y": 558
+    },
+    "02": {
+      "x": 430,
+      "y": 558
+    },
+    "03": {
+      "x": 475,
+      "y": 558
+    },
+    "04": {
+      "x": 520,
+      "y": 558
+    },
+    "05": {
+      "x": 565,
+      "y": 558
+    },
+    "06": {
+      "x": 115,
+      "y": 538
+    },
+    "07": {
+      "x": 115,
+      "y": 558
+    },
+    "08": {
+      "x": 160,
+      "y": 558
+    },
+    "09": {
+      "x": 205,
+      "y": 558
+    },
+    "font": "Helvetica-Bold",
+    "pagePositions": {},
+    "pages": [
+      1
+    ],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 10
+  },
+  "tax_lines": {
+    "line1_vehicles": {
+      "font": "Helvetica",
+      "size": 10,
+      "x": 560,
+      "y": 388
+    },
+    "line2_tax": {
+      "font": "Helvetica",
+      "size": 10,
+      "x": 560,
+      "y": 368
+    },
+    "line3_increase": {
+      "font": "Helvetica",
+      "size": 10,
+      "x": 560,
+      "y": 348
+    },
+    "line4_total": {
+      "font": "Helvetica",
+      "size": 10,
+      "x": 560,
+      "y": 328
+    },
+    "line5_credits": {
+      "font": "Helvetica",
+      "size": 10,
+      "x": 560,
+      "y": 308
+    },
+    "line6_balance": {
+      "font": "Helvetica",
+      "size": 10,
+      "x": 560,
+      "y": 288
+    },
+    "pagePositions": {},
+    "pages": [
+      1
+    ],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54
+  },
+  "tax_year": {
+    "font": "Helvetica-Bold",
+    "pagePositions": {
+      "1": {
+        "x": 174,
+        "y": 733
+      },
+      "2": {
+        "x": 266,
+        "y": 729
+      },
+      "3": {
+        "x": 371,
+        "y": 725
+      }
+    },
+    "pages": [
+      1,
+      2,
+      3
+    ],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 0,
+    "size": 11,
+    "x": 371,
+    "y": 725
+  },
+  "vehicle_categories": {
+    "A": {
+      "x": 130,
+      "y": 468
+    },
+    "B": {
+      "x": 170,
+      "y": 468
+    },
+    "C": {
+      "x": 210,
+      "y": 468
+    },
+    "D": {
+      "x": 250,
+      "y": 468
+    },
+    "E": {
+      "x": 290,
+      "y": 468
+    },
+    "F": {
+      "x": 330,
+      "y": 468
+    },
+    "G": {
+      "x": 370,
+      "y": 468
+    },
+    "H": {
+      "x": 130,
+      "y": 448
+    },
+    "I": {
+      "x": 170,
+      "y": 448
+    },
+    "J": {
+      "x": 210,
+      "y": 448
+    },
+    "K": {
+      "x": 250,
+      "y": 448
+    },
+    "L": {
+      "x": 290,
+      "y": 448
+    },
+    "M": {
+      "x": 330,
+      "y": 448
+    },
+    "N": {
+      "x": 370,
+      "y": 448
+    },
+    "O": {
+      "x": 130,
+      "y": 428
+    },
+    "P": {
+      "x": 170,
+      "y": 428
+    },
+    "Q": {
+      "x": 210,
+      "y": 428
+    },
+    "R": {
+      "x": 250,
+      "y": 428
+    },
+    "S": {
+      "x": 290,
+      "y": 428
+    },
+    "T": {
+      "x": 330,
+      "y": 428
+    },
+    "U": {
+      "x": 370,
+      "y": 428
+    },
+    "V": {
+      "x": 130,
+      "y": 408
+    },
+    "W": {
+      "x": 170,
+      "y": 408
+    },
+    "font": "Helvetica",
+    "pagePositions": {},
+    "pages": [
+      1
+    ],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 9
+  },
+  "city": {
+    "font": "Helvetica",
+    "pagePositions": {},
+    "pages": [1, 3],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 9,
+    "x": 101,
+    "y": 564
+  },
+  "state": {
+    "font": "Helvetica",
+    "pagePositions": {},
+    "pages": [1, 3],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 9,
+    "x": 350,
+    "y": 564
+  },
+  "zip": {
+    "font": "Helvetica",
+    "pagePositions": {},
+    "pages": [1, 3],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 9,
+    "x": 420,
+    "y": 564
+  },
+  "amended_month": {
+    "font": "Helvetica",
+    "pagePositions": {},
+    "pages": [1],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 9,
+    "x": 150,
+    "y": 491
+  },
+  "reasonable_cause_explanation": {
+    "font": "Helvetica",
+    "pagePositions": {},
+    "pages": [1],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 8,
+    "x": 100,
+    "y": 470
+  },
+  "vin_correction_explanation": {
+    "font": "Helvetica",
+    "pagePositions": {},
+    "pages": [1],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 8,
+    "x": 100,
+    "y": 420
+  },
+  "special_conditions": {
+    "font": "Helvetica",
+    "pagePositions": {},
+    "pages": [1],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 8,
+    "x": 100,
+    "y": 400
+  },
+  "officer_name": {
+    "font": "Helvetica",
+    "pagePositions": {},
+    "pages": [3],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 10,
+    "x": 100,
+    "y": 350
+  },
+  "officer_title": {
+    "font": "Helvetica",
+    "pagePositions": {},
+    "pages": [3],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 10,
+    "x": 300,
+    "y": 350
+  },
+  "officer_ssn": {
+    "font": "Helvetica",
+    "pagePositions": {},
+    "pages": [3],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 10,
+    "x": 100,
+    "y": 330
+  },
+  "taxpayer_pin": {
+    "font": "Helvetica",
+    "pagePositions": {},
+    "pages": [3],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 10,
+    "x": 250,
+    "y": 330
+  },
+  "tax_credits": {
+    "font": "Helvetica",
+    "pagePositions": {},
+    "pages": [1],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 10,
+    "x": 450,
+    "y": 300
+  },
+  "checkbox_has_disposals": {
+    "font": "Helvetica-Bold",
+    "pagePositions": {},
+    "pages": [1],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 10,
+    "x": 100,
+    "y": 280
+  },
+  "preparer_name": {
+    "font": "Helvetica",
+    "pagePositions": {},
+    "pages": [3],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 9,
+    "x": 100,
+    "y": 250
+  },
+  "preparer_ptin": {
+    "font": "Helvetica",
+    "pagePositions": {},
+    "pages": [3],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 9,
+    "x": 300,
+    "y": 250
+  },
+  "preparer_phone": {
+    "font": "Helvetica",
+    "pagePositions": {},
+    "pages": [3],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 9,
+    "x": 450,
+    "y": 250
+  },
+  "checkbox_preparer_self_employed": {
+    "font": "Helvetica-Bold",
+    "pagePositions": {},
+    "pages": [3],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 10,
+    "x": 100,
+    "y": 230
+  },
+  "date_prepared": {
+    "font": "Helvetica",
+    "pagePositions": {},
+    "pages": [3],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 9,
+    "x": 200,
+    "y": 230
+  },
+  "preparer_firm_name": {
+    "font": "Helvetica",
+    "pagePositions": {},
+    "pages": [3],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 9,
+    "x": 100,
+    "y": 210
+  },
+  "preparer_firm_ein": {
+    "font": "Helvetica",
+    "pagePositions": {},
+    "pages": [3],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 9,
+    "x": 350,
+    "y": 210
+  },
+  "preparer_firm_address": {
+    "font": "Helvetica",
+    "pagePositions": {},
+    "pages": [3],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 9,
+    "x": 100,
+    "y": 190
+  },
+  "preparer_firm_citystatezip": {
+    "font": "Helvetica",
+    "pagePositions": {},
+    "pages": [3],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 9,
+    "x": 100,
+    "y": 170
+  },
+  "preparer_firm_phone": {
+    "font": "Helvetica",
+    "pagePositions": {},
+    "pages": [3],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 9,
+    "x": 350,
+    "y": 170
+  },
+  "checkbox_consent_to_disclose": {
+    "font": "Helvetica-Bold",
+    "pagePositions": {},
+    "pages": [3],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 10,
+    "x": 100,
+    "y": 150
+  },
+  "designee_name": {
+    "font": "Helvetica",
+    "pagePositions": {},
+    "pages": [3],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 9,
+    "x": 200,
+    "y": 150
+  },
+  "designee_phone": {
+    "font": "Helvetica",
+    "pagePositions": {},
+    "pages": [3],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 9,
+    "x": 350,
+    "y": 150
+  },
+  "designee_pin": {
+    "font": "Helvetica",
+    "pagePositions": {},
+    "pages": [3],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 9,
+    "x": 450,
+    "y": 150
+  },
+  "signature": {
+    "font": "Helvetica",
+    "pagePositions": {},
+    "pages": [3],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 10,
+    "x": 100,
+    "y": 120
+  },
+  "printed_name": {
+    "font": "Helvetica",
+    "pagePositions": {},
+    "pages": [3],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 10,
+    "x": 300,
+    "y": 120
+  },
+  "signature_date": {
+    "font": "Helvetica",
+    "pagePositions": {},
+    "pages": [3],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 10,
+    "x": 450,
+    "y": 120
+  },
+  "checkbox_payEFTPS": {
+    "font": "Helvetica-Bold",
+    "pagePositions": {},
+    "pages": [3],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 10,
+    "x": 100,
+    "y": 100
+  },
+  "checkbox_payCard": {
+    "font": "Helvetica-Bold",
+    "pagePositions": {},
+    "pages": [3],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 10,
+    "x": 200,
+    "y": 100
+  },
+  "eftps_routing": {
+    "font": "Helvetica",
+    "pagePositions": {},
+    "pages": [3],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 9,
+    "x": 100,
+    "y": 80
+  },
+  "eftps_account": {
+    "font": "Helvetica",
+    "pagePositions": {},
+    "pages": [3],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 9,
+    "x": 250,
+    "y": 80
+  },
+  "account_type": {
+    "font": "Helvetica",
+    "pagePositions": {},
+    "pages": [3],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 9,
+    "x": 400,
+    "y": 80
+  },
+  "payment_date": {
+    "font": "Helvetica",
+    "pagePositions": {},
+    "pages": [3],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 9,
+    "x": 450,
+    "y": 80
+  },
+  "taxpayer_phone": {
+    "font": "Helvetica",
+    "pagePositions": {},
+    "pages": [3],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 9,
+    "x": 100,
+    "y": 60
+  },
+  "card_holder": {
+    "font": "Helvetica",
+    "pagePositions": {},
+    "pages": [3],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 9,
+    "x": 100,
+    "y": 40
+  },
+  "card_number": {
+    "font": "Helvetica",
+    "pagePositions": {},
+    "pages": [3],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 9,
+    "x": 250,
+    "y": 40
+  },
+  "card_exp": {
+    "font": "Helvetica",
+    "pagePositions": {},
+    "pages": [3],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 9,
+    "x": 400,
+    "y": 40
+  },
+  "card_cvv": {
+    "font": "Helvetica",
+    "pagePositions": {},
+    "pages": [3],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 9,
+    "x": 450,
+    "y": 40
+  },
+  "email": {
+    "font": "Helvetica",
+    "pagePositions": {},
+    "pages": [3],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 9,
+    "x": 100,
+    "y": 20
+  },
+  "used_on_july": {
+    "font": "Helvetica",
+    "pagePositions": {},
+    "pages": [1],
+    "pdf_x_offset": 0,
+    "pdf_y_offset": 54,
+    "size": 9,
+    "x": 400,
+    "y": 700
+  }
+}
