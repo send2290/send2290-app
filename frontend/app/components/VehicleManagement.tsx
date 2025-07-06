@@ -1,6 +1,7 @@
 import React, { ChangeEvent } from 'react';
 import { FormData, Vehicle } from '../types/form';
 import { weightCategories, months } from '../constants/formData';
+import { calculateDisposalCredit } from '../utils/formUtils';
 
 interface VehicleManagementProps {
   formData: FormData;
@@ -213,8 +214,19 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
                   type="date"
                   name={`vehicle_${i}_disposal_date`}
                   value={v.disposal_date || ''}
-                  onChange={handleChange}
-                  max={todayStr}
+                  onChange={(e) => {
+                    // Update disposal date and recalculate credit
+                    const vehicles = [...formData.vehicles];
+                    vehicles[i] = {
+                      ...vehicles[i],
+                      disposal_date: e.target.value,
+                      disposal_credit: e.target.value ? calculateDisposalCredit(vehicles[i], e.target.value) : undefined
+                    };
+                    const syntheticEvent = {
+                      target: { name: 'vehicles', value: vehicles }
+                    } as any;
+                    handleChange(syntheticEvent);
+                  }}
                   placeholder="Disposal Date"
                   required
                 />
@@ -241,6 +253,41 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
                   onChange={handleChange}
                   onWheel={(e) => e.currentTarget.blur()}
                 />
+                
+                {/* Dynamic Credit Display */}
+                {v.disposal_date && v.category && v.used_month && (
+                  <div style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: 8,
+                    padding: '6px 12px',
+                    backgroundColor: '#d4edda',
+                    border: '1px solid #c3e6cb',
+                    borderRadius: 4,
+                    fontSize: '0.9rem',
+                    fontWeight: 'bold',
+                    color: '#155724',
+                    minWidth: '200px'
+                  }}>
+                    <span>💰 Line 5 Credit: ${calculateDisposalCredit(v, v.disposal_date).toFixed(2)}</span>
+                  </div>
+                )}
+                
+                {/* Credit Explanation */}
+                {v.disposal_date && v.category && v.used_month && calculateDisposalCredit(v, v.disposal_date) > 0 && (
+                  <div style={{ 
+                    width: '100%',
+                    fontSize: '0.8rem',
+                    color: '#856404',
+                    backgroundColor: '#fff3cd',
+                    padding: '4px 8px',
+                    borderRadius: 3,
+                    border: '1px solid #ffeaa7',
+                    marginTop: 4
+                  }}>
+                    ℹ️ Credit = Full-period tax minus partial-period tax for actual months of use (disposal before filing original return).
+                  </div>
+                )}
               </div>
             )}
 

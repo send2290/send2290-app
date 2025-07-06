@@ -10,6 +10,7 @@ interface TaxComputationTableProps {
   suspendedLoggingCount: number;
   suspendedNonLoggingCount: number;
   taxableVehiclesCount: number;
+  totalDisposalCredits: number;
 }
 
 export const TaxComputationTable: React.FC<TaxComputationTableProps> = ({
@@ -19,7 +20,8 @@ export const TaxComputationTable: React.FC<TaxComputationTableProps> = ({
   formData,
   suspendedLoggingCount,
   suspendedNonLoggingCount,
-  taxableVehiclesCount
+  taxableVehiclesCount,
+  totalDisposalCredits
 }) => {
   return (
     <div style={{ 
@@ -193,13 +195,13 @@ export const TaxComputationTable: React.FC<TaxComputationTableProps> = ({
           </div>
           
           <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid #ccc' }}>
-            <span>5. Credits</span>
-            <strong>${(typeof formData.tax_credits === 'number' ? formData.tax_credits : parseFloat(String(formData.tax_credits)) || 0).toFixed(2)}</strong>
+            <span>5. Credits (Vehicle Disposals)</span>
+            <strong>${totalDisposalCredits.toFixed(2)}</strong>
           </div>
           
           <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '2px solid #333', background: '#fff3cd' }}>
             <span><strong>6. Balance due (subtract line 5 from line 4)</strong></span>
-            <strong>${Math.max(0, (grandTotals.regularTotalTax + grandTotals.loggingTotalTax) - (typeof formData.tax_credits === 'number' ? formData.tax_credits : parseFloat(String(formData.tax_credits)) || 0)).toFixed(2)}</strong>
+            <strong>${Math.max(0, (grandTotals.regularTotalTax + grandTotals.loggingTotalTax) - totalDisposalCredits).toFixed(2)}</strong>
           </div>
         </div>
         
@@ -215,7 +217,7 @@ export const TaxComputationTable: React.FC<TaxComputationTableProps> = ({
         </div>
         
         {/* Tax Breakdown */}
-        {(grandTotals.regularAnnualTax > 0 || grandTotals.loggingAnnualTax > 0 || grandTotals.regularPartialTax > 0 || grandTotals.loggingPartialTax > 0) && (
+        {(grandTotals.regularAnnualTax > 0 || grandTotals.loggingAnnualTax > 0 || grandTotals.regularPartialTax > 0 || grandTotals.loggingPartialTax > 0 || totalDisposalCredits > 0) && (
           <div style={{ marginTop: '8px', padding: '8px', background: 'white', borderRadius: '4px' }}>
             <h5 style={{ margin: '0 0 8px 0', color: '#333' }}>Tax Breakdown:</h5>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '6px', fontSize: '0.8rem' }}>
@@ -231,7 +233,20 @@ export const TaxComputationTable: React.FC<TaxComputationTableProps> = ({
               {grandTotals.loggingPartialTax > 0 && (
                 <div>📅 Partial (Logging): ${grandTotals.loggingPartialTax.toFixed(2)}</div>
               )}
+              {totalDisposalCredits > 0 && (
+                <div style={{ color: '#d32f2f', fontWeight: 'bold' }}>💰 Disposal Credits: -${totalDisposalCredits.toFixed(2)}</div>
+              )}
             </div>
+            {totalDisposalCredits > 0 && (
+              <div style={{ marginTop: '8px', padding: '6px', background: '#e8f5e8', borderRadius: '4px', border: '1px solid #4caf50' }}>
+                <div style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#2e7d32' }}>
+                  Net Tax Due: ${Math.max(0, (grandTotals.regularTotalTax + grandTotals.loggingTotalTax) - totalDisposalCredits).toFixed(2)}
+                </div>
+                <div style={{ fontSize: '0.75rem', color: '#666', marginTop: '2px' }}>
+                  (Total Tax: ${(grandTotals.regularTotalTax + grandTotals.loggingTotalTax).toFixed(2)} - Credits: ${totalDisposalCredits.toFixed(2)})
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

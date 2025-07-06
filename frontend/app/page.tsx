@@ -45,6 +45,7 @@ export default function Form2290() {
     formData,
     setFormData,
     totalTax,
+    totalDisposalCredits,
     captchaToken,
     setCaptchaToken,
     captchaError,
@@ -91,6 +92,7 @@ export default function Form2290() {
   const handleSubmit = createSubmissionHandler(
     formData,
     totalTax,
+    totalDisposalCredits,
     captchaToken,
     captchaRef,
     setCaptchaToken,
@@ -255,6 +257,7 @@ export default function Form2290() {
           suspendedLoggingCount={suspendedLoggingCount}
           suspendedNonLoggingCount={suspendedNonLoggingCount}
           taxableVehiclesCount={taxableVehiclesCount}
+          totalDisposalCredits={totalDisposalCredits}
         />
 
         <SignaturePayment 

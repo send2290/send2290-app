@@ -605,22 +605,41 @@ def build_pdf():
             
             # Simple month-specific Part I calculation
             
-            # TEMPORARILY DISABLE CREDITS TO FIX PART I CALCULATIONS
-            credits = 0.0  # float(data.get('tax_credits', 0))
+            # Calculate disposal credits for vehicles in THIS month only
+            month_disposal_credits = 0.0
+            print(f"🔍 Checking disposal credits for month {month}")
+            print(f"🔍 Month vehicles count: {len(month_vehicles)}")
+            for i, vehicle in enumerate(month_vehicles):
+                print(f"  🚗 Vehicle {i+1}: VIN={vehicle.get('vin', 'Unknown')[:8]}...")
+                print(f"    Category: {vehicle.get('category')}")
+                print(f"    Used month: {vehicle.get('used_month')}")
+                print(f"    Disposal date: {vehicle.get('disposal_date')}")
+                print(f"    Disposal credit field: {vehicle.get('disposal_credit')}")
+                
+                if vehicle.get('disposal_credit'):
+                    try:
+                        credit = float(vehicle['disposal_credit'])
+                        month_disposal_credits += credit
+                        print(f"    ✅ Added disposal credit: ${credit}")
+                    except (ValueError, TypeError):
+                        print(f"    ❌ Invalid disposal credit: {vehicle.get('disposal_credit')}")
+                        pass  # Skip invalid disposal credit values
+                else:
+                    print(f"    ℹ️ No disposal credit for this vehicle")
+            
+            print(f"💰 Total disposal credits for month {month}: ${month_disposal_credits}")
+            
             additional_tax = 0.00
             total_tax_with_additional = total_tax + additional_tax
             
-            # No credit distribution needed when credits = 0
-            month_credits = 0.0
-            
-            balance_due = max(0, total_tax_with_additional - month_credits)
+            balance_due = max(0, total_tax_with_additional - month_disposal_credits)
             
             # Create month-specific Part I data
             month_part_i = {
                 'line2_tax': total_tax,
                 'line3_increase': additional_tax,
                 'line4_total': total_tax_with_additional,
-                'line5_credits': month_credits,
+                'line5_credits': month_disposal_credits,
                 'line6_balance': balance_due
             }
             

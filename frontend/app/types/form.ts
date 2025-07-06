@@ -10,6 +10,7 @@ export interface Vehicle {
   disposal_date?: string           // For CreditsAmountStatement
   disposal_reason?: string         // Reason for disposal/sale
   disposal_amount?: number         // Amount received for disposal
+  disposal_credit?: number         // Calculated disposal credit (full period - partial period)
   sale_to_private_party?: boolean  // For PrivateSaleVehicleStatement
   tgw_increased?: boolean          // If weight category increased during year
   tgw_increase_month?: string      // Month weight increased
@@ -50,9 +51,8 @@ export interface FormData {
   officer_title: string
   officer_ssn: string
   taxpayer_pin: string
-  tax_credits: number
   
-  // Enhanced disposals/credits
+  // Enhanced disposals/credits (removed static tax_credits field)
   has_disposals: boolean
   
   include_preparer: boolean

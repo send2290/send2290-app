@@ -72,35 +72,6 @@ export const OfficerInfo: React.FC<OfficerInfoProps> = ({ formData, handleChange
           required
         />
       </div>
-      
-      {/* Tax Credits */}
-      <h2 style={{ marginTop: 20 }}>Tax Credits & Disposals</h2>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-        <input 
-          name="tax_credits" 
-          type="number"
-          min="0"
-          step="0.01"
-          placeholder="Tax Credits Amount"
-          value={formData.tax_credits === 0 ? '' : formData.tax_credits.toString()} 
-          onChange={handleChange}
-          onWheel={(e) => e.currentTarget.blur()}
-          title="Amount of tax credits to apply against tax liability"
-        />
-        <label style={{ ...labelSmall, cursor: 'pointer' }}>
-          <input
-            type="checkbox"
-            name="has_disposals"
-            checked={formData.has_disposals || false}
-            onChange={handleChange}
-            style={{ cursor: 'pointer' }}
-          />
-          <span style={{ cursor: 'pointer' }}>Include Vehicle Disposals/Sales</span>
-        </label>
-        <span style={{ fontSize: '0.9rem', color: '#666', fontStyle: 'italic' }}>
-          Enter any tax credits and mark vehicles disposed below
-        </span>
-      </div>
     </>
   );
 };

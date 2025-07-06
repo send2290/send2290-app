@@ -7,6 +7,7 @@ import { validateBeforeSubmit } from './formUtils';
 export const createSubmissionHandler = (
   formData: FormData,
   totalTax: number,
+  totalDisposalCredits: number,
   captchaToken: string | null,
   captchaRef: React.RefObject<any>,
   setCaptchaToken: (token: string | null) => void,
@@ -16,7 +17,7 @@ export const createSubmissionHandler = (
 ) => {
   return async () => {
     // 1) run client-side validation FIRST
-    const err = validateBeforeSubmit(formData, totalTax, captchaToken);
+    const err = validateBeforeSubmit(formData, totalTax, captchaToken, totalDisposalCredits);
     if (err) { 
       alert(err); 
       return; 
@@ -78,8 +79,8 @@ export const createSubmissionHandler = (
       const totalTaxAmount = grandTotals.regularTotalTax + grandTotals.loggingTotalTax;
       const additionalTax = 0.00; // Placeholder for future implementation
       const totalTaxWithAdditional = totalTaxAmount + additionalTax;
-      // TEMPORARILY DISABLE CREDITS TO FIX PART I CALCULATIONS
-      const credits = 0; // typeof formData.tax_credits === 'number' ? formData.tax_credits : parseFloat(String(formData.tax_credits)) || 0;
+      // Use calculated disposal credits instead of static tax_credits
+      const credits = totalDisposalCredits;
       const balanceDue = Math.max(0, totalTaxWithAdditional - credits);
       
       // Handle captcha token for localhost development
@@ -87,10 +88,16 @@ export const createSubmissionHandler = (
         (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
       const finalCaptchaToken = isLocalhost ? 'localhost-dev-token' : captchaToken;
 
+      // Debug: Log vehicle disposal credits before submission
+      console.log('🔍 Vehicle disposal credits before submission:');
+      formData.vehicles.forEach((vehicle, index) => {
+        console.log(`  Vehicle ${index + 1}: VIN=${vehicle.vin.slice(0, 8)}..., disposal_credit=${vehicle.disposal_credit}`);
+      });
+
       const submissionData = {
         ...formData,
         // Ensure numeric fields are properly converted
-        tax_credits: credits,
+        disposal_credits: credits, // Use disposal_credits instead of tax_credits
         count_w_suspended_logging: formData.vehicles.filter(v => v.category === 'W' && v.is_logging).length,
         count_w_suspended_non_logging: formData.vehicles.filter(v => v.category === 'W' && !v.is_logging).length,
         captchaToken: finalCaptchaToken,
@@ -102,7 +109,7 @@ export const createSubmissionHandler = (
           line2_tax: totalTaxAmount,                    // Line 2: Tax (from Schedule 1, line c.)
           line3_increase: additionalTax,          // Line 3: Additional tax (attach explanation)
           line4_total: totalTaxWithAdditional,    // Line 4: Total tax (add lines 2 and 3)
-          line5_credits: credits,                 // Line 5: Credits
+          line5_credits: credits,                 // Line 5: Credits (from vehicle disposals)
           line6_balance: balanceDue               // Line 6: Balance due (subtract line 5 from line 4)
         }
       };

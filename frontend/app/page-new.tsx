@@ -50,6 +50,7 @@ export default function Form2290() {
     suspendedCount,
     suspendedLoggingCount,
     suspendedNonLoggingCount,
+    totalDisposalCredits,
   } = useForm2290();
 
   // Login UI states
@@ -82,6 +83,7 @@ export default function Form2290() {
   const handleSubmit = createSubmissionHandler(
     formData,
     totalTax,
+    totalDisposalCredits,
     captchaToken,
     captchaRef,
     setCaptchaToken,
@@ -246,6 +248,7 @@ export default function Form2290() {
           suspendedLoggingCount={suspendedLoggingCount}
           suspendedNonLoggingCount={suspendedNonLoggingCount}
           taxableVehiclesCount={taxableVehiclesCount}
+          totalDisposalCredits={totalDisposalCredits}
         />
 
         <SignaturePayment 

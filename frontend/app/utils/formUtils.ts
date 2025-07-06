@@ -4,7 +4,8 @@ import { weightCategories, loggingRates, partialPeriodTaxRegular, partialPeriodT
 export const validateBeforeSubmit = (
   formData: FormData, 
   totalTax: number, 
-  captchaToken: string | null
+  captchaToken: string | null,
+  totalDisposalCredits: number = 0
 ): string | null => {
   // CAPTCHA validation (skip on localhost for development)
   const isLocalhost = typeof window !== 'undefined' && 
@@ -34,12 +35,64 @@ export const validateBeforeSubmit = (
   // IRS Business Rule: Taxpayer PIN cannot be all zeros (R0000-031, R0000-084-01)
   if (formData.taxpayer_pin === '00000') return 'Taxpayer PIN cannot be all zeros';
   
-  // Tax credits validation (if provided)
-  const taxCreditsValue = typeof formData.tax_credits === 'number' ? formData.tax_credits : parseFloat(String(formData.tax_credits)) || 0;
-  if (taxCreditsValue < 0) return 'Tax credits cannot be negative';
+  // Disposal credits validation (if provided)
+  if (totalDisposalCredits < 0) return 'Disposal credits cannot be negative';
   
   // IRS Business Rule F2290-004-01: Credits cannot exceed total tax
-  if (taxCreditsValue > totalTax) return 'Tax credits cannot exceed total tax amount';
+  if (totalDisposalCredits > totalTax) return 'Disposal credits cannot exceed total tax amount';
+  
+  // IRS Business Rule: Disposal credits per month cannot exceed Line 4 tax for that month
+  const monthlyTaxAndCredits = new Map<string, { tax: number, credits: number }>();
+  
+  // Group vehicles by month and calculate tax and credits per month
+  formData.vehicles.forEach(vehicle => {
+    if (!vehicle.used_month || !vehicle.category) return;
+    
+    const month = vehicle.used_month;
+    if (!monthlyTaxAndCredits.has(month)) {
+      monthlyTaxAndCredits.set(month, { tax: 0, credits: 0 });
+    }
+    
+    const monthData = monthlyTaxAndCredits.get(month)!;
+    
+    // Calculate tax for this vehicle (only if not suspended/agricultural)
+    if (vehicle.category !== 'W' && !vehicle.is_suspended && !vehicle.is_agricultural) {
+      const catObj = weightCategories.find(w => w.value === vehicle.category);
+      if (catObj) {
+        const mon = parseInt(vehicle.used_month.slice(-2), 10) || 0;
+        const isLogging = vehicle.is_logging;
+        const isAnnualTax = mon === 7; // July = annual tax
+        
+        let taxAmount = 0;
+        if (isAnnualTax) {
+          // Annual tax (July only)
+          taxAmount = isLogging ? (loggingRates[vehicle.category] || 0) : catObj.tax;
+        } else {
+          // Partial-period tax (all months except July) - use lookup tables
+          if (isLogging) {
+            taxAmount = partialPeriodTaxLogging[vehicle.category]?.[mon] || 0;
+          } else {
+            taxAmount = partialPeriodTaxRegular[vehicle.category]?.[mon] || 0;
+          }
+        }
+        monthData.tax += taxAmount;
+      }
+    }
+    
+    // Add disposal credit for this vehicle (if any)
+    if (vehicle.disposal_credit && vehicle.disposal_credit > 0) {
+      monthData.credits += vehicle.disposal_credit;
+    }
+  });
+  
+  // Validate each month's credits don't exceed its tax
+  for (const [month, data] of monthlyTaxAndCredits.entries()) {
+    console.log(`🔍 Month ${formatMonth(month)}: Tax=$${data.tax.toFixed(2)}, Credits=$${data.credits.toFixed(2)}`);
+    if (data.credits > data.tax) {
+      const monthStr = formatMonth(month);
+      return `Disposal credits for ${monthStr} ($${data.credits.toFixed(2)}) cannot exceed the total tax for that month ($${data.tax.toFixed(2)})`;
+    }
+  }
   
   // Amendment validation
   if (formData.amended_return && !formData.amended_month) {
@@ -151,7 +204,7 @@ export const validateBeforeSubmit = (
   }
   
   // IRS Business Rule F2290-068: Payment method required when balance due > 0
-  const balanceDue = Math.max(0, totalTax - (typeof formData.tax_credits === 'number' ? formData.tax_credits : parseFloat(String(formData.tax_credits)) || 0));
+  const balanceDue = Math.max(0, totalTax - totalDisposalCredits);
   if (balanceDue > 0 && !formData.payEFTPS && !formData.payCard) {
     return 'Payment method (EFTPS or Credit/Debit Card) is required when balance is due';
   }
@@ -317,4 +370,109 @@ export const formatMonth = (monthCode: string) => {
   const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
                      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   return `${monthNames[monthNum - 1]} ${year}`;
+};
+
+// Disposal Credit Calculation
+export const calculateDisposalCredit = (vehicle: Vehicle, disposalDate: string): number => {
+  if (!vehicle.category || !vehicle.used_month || !disposalDate) return 0;
+
+  // Category W vehicles have no tax, so no credit
+  if (vehicle.category === 'W') return 0;
+
+  // Skip suspended or agricultural vehicles (they don't have tax)
+  if (vehicle.is_suspended || vehicle.is_agricultural) return 0;
+
+  const firstUseMonth = parseInt(vehicle.used_month.slice(-2), 10);
+  const disposalDateObj = new Date(disposalDate);
+  const disposalMonth = disposalDateObj.getMonth() + 1; // 1-12
+  
+  const catObj = weightCategories.find(w => w.value === vehicle.category);
+  if (!catObj) return 0;
+
+  const isLogging = vehicle.is_logging;
+  
+  // Step 1: Calculate the full-period tax (Line 1)
+  const fullPeriodTax = isLogging ? loggingRates[vehicle.category] : catObj.tax;
+  
+  // Step 2: Count months of use (from first day of first use month through last day of disposal month)
+  // Example: First used July 2, destroyed October 15 → July, Aug, Sept, Oct = 4 months
+  let monthsOfUse = 0;
+  if (disposalMonth >= firstUseMonth) {
+    // Same year disposal
+    monthsOfUse = disposalMonth - firstUseMonth + 1;
+  } else {
+    // Next year disposal (crosses tax year boundary)
+    monthsOfUse = (12 - firstUseMonth + 1) + disposalMonth;
+  }
+  
+  // Ensure monthsOfUse is within valid range (1-12 months)
+  monthsOfUse = Math.max(1, Math.min(12, monthsOfUse));
+  
+  // Step 3: Look up partial-period tax based on months of use
+  // The partial period tables are organized by starting month (when vehicle is first used)
+  // For disposal, we need to find the partial period tax for the actual months used
+  let partialPeriodTax = 0;
+  let lookupKey: number | undefined;
+  
+  if (monthsOfUse === 12) {
+    // Full year use = full period tax
+    partialPeriodTax = fullPeriodTax;
+  } else {
+    // Map months of use to the correct table lookup
+    // The IRS tables use month numbers as keys, where each represents the partial period tax
+    // Based on the IRS example: 4 months of use should give $48.00 for Category C
+    // Looking at Category C table: key 3 = 48.00, so 4 months of use = key 3
+    
+    let lookupKey: number;
+    // Corrected mapping based on IRS example
+    // The IRS example shows 4 months of use should give $48.00 for Category C
+    // $48.00 is at key 3 in our table, so 4 months maps to key 3
+    const monthsToKeyMap: Record<number, number> = {
+      1: 6,   // 1 month of use
+      2: 5,   // 2 months of use  
+      3: 4,   // 3 months of use
+      4: 3,   // 4 months of use (IRS example: should give $48 for Category C)
+      5: 2,   // 5 months of use
+      6: 1,   // 6 months of use
+      7: 12,  // 7 months of use
+      8: 11,  // 8 months of use
+      9: 10,  // 9 months of use
+      10: 9,  // 10 months of use
+      11: 8   // 11 months of use
+    };
+    
+    lookupKey = monthsToKeyMap[monthsOfUse];
+    
+    // Debug logging
+    console.log(`🔍 Disposal Credit Debug for Vehicle ${vehicle.vin}:`);
+    console.log(`  Category: ${vehicle.category}, Logging: ${isLogging}`);
+    console.log(`  First use month: ${firstUseMonth}, Disposal month: ${disposalMonth}`);
+    console.log(`  Months of use: ${monthsOfUse}`);
+    console.log(`  monthsToKeyMap:`, monthsToKeyMap);
+    
+    lookupKey = monthsToKeyMap[monthsOfUse];
+    console.log(`  Lookup key for ${monthsOfUse} months: ${lookupKey}`);
+    
+    if (lookupKey !== undefined) {
+      if (isLogging) {
+        partialPeriodTax = partialPeriodTaxLogging[vehicle.category]?.[lookupKey] || 0;
+      } else {
+        partialPeriodTax = partialPeriodTaxRegular[vehicle.category]?.[lookupKey] || 0;
+      }
+      console.log(`  Partial-period tax: $${partialPeriodTax}`);
+    } else {
+      // Fallback for edge cases
+      partialPeriodTax = fullPeriodTax;
+      console.log(`  Fallback to full-period tax: $${partialPeriodTax}`);
+    }
+  }
+
+  // Step 4: Calculate credit (Line 1 - Line 2)
+  const credit = Math.max(0, fullPeriodTax - partialPeriodTax);
+  
+  // Final debug summary
+  console.log(`  Full-period tax: $${fullPeriodTax}`);
+  console.log(`  Credit: $${credit}`);
+  
+  return credit;
 };

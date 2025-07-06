@@ -121,9 +121,7 @@ export const createFormHandler = (
     }
 
     // Default update (now includes email)
-    const finalValue = type === 'checkbox' ? checked : 
-                      (type === 'number' && name === 'tax_credits') ? (value ? parseFloat(value) : 0) :
-                      value;
+    const finalValue = type === 'checkbox' ? checked : value;
     
     setFormData({
       ...formData,

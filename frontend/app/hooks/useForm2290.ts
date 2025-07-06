@@ -43,9 +43,8 @@ export const useForm2290 = () => {
     officer_title: '',
     officer_ssn: '',
     taxpayer_pin: '',
-    tax_credits: 0,
     
-    // Enhanced disposals/credits
+    // Enhanced disposals/credits (removed static tax_credits)
     has_disposals: false,
     
     include_preparer: false,
@@ -187,6 +186,11 @@ export const useForm2290 = () => {
   const categoryData = calculateCategoryCounts(formData.vehicles);
   const grandTotals = calculateGrandTotals(categoryData);
 
+  // Calculate total disposal credits
+  const totalDisposalCredits = formData.vehicles.reduce((sum, vehicle) => {
+    return sum + (vehicle.disposal_credit || 0);
+  }, 0);
+
   const totalVINs = formData.vehicles.length;
   const lodgingCount = formData.vehicles.filter(v => v.is_logging).length;
   const taxableVehiclesCount = formData.vehicles.filter(v => {
@@ -202,6 +206,7 @@ export const useForm2290 = () => {
     formData,
     setFormData,
     totalTax,
+    totalDisposalCredits,
     captchaToken,
     setCaptchaToken,
     captchaError,
