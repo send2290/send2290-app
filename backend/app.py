@@ -482,27 +482,21 @@ def build_pdf():
 
     user_uid = request.user['uid']
     
+    # Extract Part I tax summary data from frontend
+    frontend_part_i = data.get('partI', {})
+    
     # Group vehicles by month - FIX: use 'used_month' not 'used_in_month'
     vehicles = data.get('vehicles', [])
     vehicles_by_month = {}
     
-    print(f"🔍 DEBUGGING: Total vehicles received: {len(vehicles)}")
     for idx, vehicle in enumerate(vehicles):
         month = vehicle.get('used_month', data.get('used_on_july', ''))
-        print(f"🚗 Vehicle {idx+1}: VIN={vehicle.get('vin', 'N/A')[:8]}..., used_month='{month}'")
         if month not in vehicles_by_month:
             vehicles_by_month[month] = []
         vehicles_by_month[month].append(vehicle)
     
-    print(f"📅 GROUPING RESULT: {len(vehicles_by_month)} different months found:")
-    for month, month_vehicles in vehicles_by_month.items():
-        print(f"  - Month {month}: {len(month_vehicles)} vehicles")
-    
     if not vehicles_by_month:
         return jsonify({"error": "No vehicles found"}), 400
-
-    print(f"🚗 Vehicles grouped by month: {vehicles_by_month}")
-    print(f"🔢 Number of different months: {len(vehicles_by_month)}")
 
     created_files = []
     
@@ -511,67 +505,141 @@ def build_pdf():
         template_path = os.path.join(os.path.dirname(__file__), "f2290_template.pdf")
         if not os.path.exists(template_path):
             return jsonify({"error": "Template not found"}), 500
-            
-        template = PdfReader(open(template_path, "rb"), strict=False)
         
         # Process each month separately
         for month, month_vehicles in vehicles_by_month.items():
             print(f"📅 Processing month {month} with {len(month_vehicles)} vehicles")
             
-            # Calculate totals for this month using same logic as XML builder
-            total_tax = 0.0
-            weight_categories = {
-                'A': 100.00, 'B': 122.00, 'C': 144.00, 'D': 166.00, 'E': 188.00, 'F': 210.00,
-                'G': 232.00, 'H': 254.00, 'I': 276.00, 'J': 298.00, 'K': 320.00, 'L': 342.00,
-                'M': 364.00, 'N': 386.00, 'O': 408.00, 'P': 430.00, 'Q': 452.00, 'R': 474.00,
-                'S': 496.00, 'T': 518.00, 'U': 540.00, 'V': 550.00, 'W': 0.00
-            }
-            logging_rates = {
-                'A': 75.0, 'B': 91.5, 'C': 108.0, 'D': 124.5, 'E': 141.0, 'F': 157.5,
-                'G': 174.0, 'H': 190.5, 'I': 207.0, 'J': 223.5, 'K': 240.0, 'L': 256.5,
-                'M': 273.0, 'N': 289.5, 'O': 306.0, 'P': 322.5, 'Q': 339.0, 'R': 355.5,
-                'S': 372.0, 'T': 388.5, 'U': 405.0, 'V': 412.5, 'W': 0.0
-            }
-            
-            for vehicle in month_vehicles:
-                used_month = vehicle.get('used_month', '')
-                category = vehicle.get('category', '')
-                is_logging = vehicle.get('is_logging', False)
-                is_suspended = vehicle.get('is_suspended', False)
-                is_agricultural = vehicle.get('is_agricultural', False)
-                
-                if not used_month or not category or is_suspended or is_agricultural:
-                    continue
-                
-                # Extract month number (last 2 digits) - match XML builder logic exactly
-                try:
-                    month_num = int(used_month[-2:]) if used_month.isdigit() else 0
-                except:
-                    continue
-                
-                # Use exact XML builder logic for months_left calculation
-                months_left = 12 if month_num >= 7 else (13 - month_num if 1 <= month_num <= 12 else 0)
-                
-                if months_left == 0:
-                    continue
-                
-                # Get base rate - match XML builder exactly
-                if category in weight_categories:
-                    base_rate = logging_rates[category] if is_logging else weight_categories[category]
-                    
-                    # Calculate tax using exact XML builder formula
-                    vehicle_tax = round(base_rate * (months_left / 12), 2)
-                    total_tax += vehicle_tax
-            
-            print(f"💰 Total tax for month {month}: ${total_tax:.2f}")
-            
-            # Always create a new submission (remove the update logic)
-            print(f"✨ Creating new submission for month {month}")
-            
             # Create form data for this month
             month_data = data.copy()
             month_data['vehicles'] = month_vehicles
             month_data['used_on_july'] = month
+            
+            # Calculate vehicle statistics for this month only
+            total_reported = len(month_vehicles)
+            total_suspended = len([v for v in month_vehicles if v.get("category") == "W"])
+            total_taxable = total_reported - total_suspended
+            
+            # Add calculated statistics to month data
+            month_data["total_reported_vehicles"] = str(total_reported)
+            month_data["total_suspended_vehicles"] = str(total_suspended) 
+            month_data["total_taxable_vehicles"] = str(total_taxable)
+            
+            weight_categories_list = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W']
+            
+            # Group frontend calculations by month instead of recalculating
+            print(f"💰 Grouping frontend calculations for month {month}")
+            
+            # Get frontend category and grand total data
+            frontend_category_data = data.get('categoryData', {})
+            frontend_grand_totals = data.get('grandTotals', {})
+            
+            total_tax = 0
+            
+            for cat in weight_categories_list:
+                cat_lower = cat.lower()
+                
+                # Count vehicles in this month for this category
+                regular_vehicles = [v for v in month_vehicles if v.get("category") == cat and not v.get("is_logging", False)]
+                logging_vehicles = [v for v in month_vehicles if v.get("category") == cat and v.get("is_logging", False)]
+                
+                regular_count = len(regular_vehicles)
+                logging_count = len(logging_vehicles)
+                
+                month_data[f"count_{cat_lower}_regular"] = str(regular_count)
+                month_data[f"count_{cat_lower}_logging"] = str(logging_count)
+                
+                # Use frontend's per-vehicle rates and calculate only for this month's vehicles
+                if cat in frontend_category_data:
+                    frontend_cat_data = frontend_category_data[cat]
+                    
+                    # Determine if this is annual (July) or partial-period tax
+                    month_num = int(month[-2:]) if month and len(month) >= 2 else 0
+                    is_annual_month = (month_num == 7)  # July = annual tax
+                    
+                    if is_annual_month:
+                        # Use annual tax rates for July
+                        regular_per_vehicle_rate = frontend_cat_data.get('regularAnnualTax', 0) / max(1, frontend_cat_data.get('regularCount', 1))
+                        logging_per_vehicle_rate = frontend_cat_data.get('loggingAnnualTax', 0) / max(1, frontend_cat_data.get('loggingCount', 1))
+                        tax_type = "annual"
+                    else:
+                        # Use partial-period tax rates for all other months
+                        regular_per_vehicle_rate = frontend_cat_data.get('regularPartialTax', 0) / max(1, frontend_cat_data.get('regularCount', 1))
+                        logging_per_vehicle_rate = frontend_cat_data.get('loggingPartialTax', 0) / max(1, frontend_cat_data.get('loggingCount', 1))
+                        tax_type = "partial"
+                    
+                    # Calculate month-specific totals using frontend rates
+                    regular_total_tax = regular_count * regular_per_vehicle_rate
+                    logging_total_tax = logging_count * logging_per_vehicle_rate
+                    
+                    print(f"📋 Month {month} ({tax_type}) Category {cat}: {regular_count} regular × ${regular_per_vehicle_rate:.2f} = ${regular_total_tax:.2f}, {logging_count} logging × ${logging_per_vehicle_rate:.2f} = ${logging_total_tax:.2f}")
+                else:
+                    # No vehicles of this category
+                    regular_total_tax = 0
+                    logging_total_tax = 0
+                    regular_per_vehicle_rate = 0
+                    logging_per_vehicle_rate = 0
+                
+                total_category_tax = regular_total_tax + logging_total_tax
+                total_tax += total_category_tax
+                
+                month_data[f"amount_{cat_lower}"] = f"{total_category_tax:.2f}"
+                month_data[f"amount_{cat_lower}_regular"] = f"{regular_total_tax:.2f}"
+                month_data[f"amount_{cat_lower}_logging"] = f"{logging_total_tax:.2f}"
+                
+                # Add per-vehicle rates for column 2 display
+                if regular_count > 0:
+                    month_data[f"tax_partial_{cat_lower}_regular"] = f"{regular_per_vehicle_rate:.2f}"
+                if logging_count > 0:
+                    month_data[f"tax_partial_{cat_lower}_logging"] = f"{logging_per_vehicle_rate:.2f}"
+            
+            # Add category W suspended vehicle counts for this month
+            w_regular_count = len([v for v in month_vehicles if v.get("category") == "W" and not v.get("is_logging", False)])
+            w_logging_count = len([v for v in month_vehicles if v.get("category") == "W" and v.get("is_logging", False)])
+            
+            month_data["count_w_suspended_non_logging"] = str(w_regular_count)
+            month_data["count_w_suspended_logging"] = str(w_logging_count)
+            
+            if w_regular_count > 0 or w_logging_count > 0:
+                print(f"📋 Month {month} Category W (Suspended): Regular={w_regular_count} + Logging={w_logging_count}")
+            
+            # Simple month-specific Part I calculation
+            
+            # TEMPORARILY DISABLE CREDITS TO FIX PART I CALCULATIONS
+            credits = 0.0  # float(data.get('tax_credits', 0))
+            additional_tax = 0.00
+            total_tax_with_additional = total_tax + additional_tax
+            
+            # No credit distribution needed when credits = 0
+            month_credits = 0.0
+            
+            balance_due = max(0, total_tax_with_additional - month_credits)
+            
+            # Create month-specific Part I data
+            month_part_i = {
+                'line2_tax': total_tax,
+                'line3_increase': additional_tax,
+                'line4_total': total_tax_with_additional,
+                'line5_credits': month_credits,
+                'line6_balance': balance_due
+            }
+            
+            for field_name, field_value in month_part_i.items():
+                month_data[field_name] = f"{field_value:.2f}"
+            
+            # Add dynamic VIN fields to month data
+            print(f"🔍 Adding VIN data for {len(month_vehicles)} vehicles to month_data:")
+            for i, vehicle in enumerate(month_vehicles, 1):
+                if i <= 24:  # Support up to 24 VINs as defined in positions
+                    vin_value = vehicle.get("vin", "")
+                    category_value = vehicle.get("category", "")
+                    is_agricultural = vehicle.get("is_agricultural", False)
+                    mileage_5000_or_less = vehicle.get("mileage_5000_or_less", False)
+                    is_suspended = vehicle.get("is_suspended", False)
+                    
+                    month_data[f"vin_{i}"] = vin_value
+                    month_data[f"vin_{i}_category"] = category_value
+                    print(f"  vin_{i}: '{vin_value}' -> category: '{category_value}' | agricultural: {is_agricultural} | mileage≤5k: {mileage_5000_or_less} | suspended: {is_suspended}")
             
             # Generate XML first
             try:
@@ -609,12 +677,16 @@ def build_pdf():
                 )
                 # Continue processing but log the failure
 
-            # Create submission record
+            # Create submission record with original frontend data (preserves Part I tax calculation)
+            submission_data = data.copy()  # Use original data that contains frontend's partI calculation
+            submission_data['processed_month'] = month  # Add which month this submission represents
+            submission_data['month_vehicles'] = month_vehicles  # Add vehicles for this specific month
+            
             submission = Submission(
                 user_uid=user_uid,
                 month=month,
                 xml_s3_key=xml_key,
-                form_data=json.dumps(month_data)
+                form_data=json.dumps(submission_data)  # Save original frontend data, not just month_data
             )
             db.add(submission)
             db.commit()
@@ -632,6 +704,8 @@ def build_pdf():
             db.commit()
 
             # Generate PDF for this month using multi-page field positioning
+            # Load a fresh template for each month to avoid overlapping layers
+            template = PdfReader(open(template_path, "rb"), strict=False)
             writer = PdfWriter()
 
             # Process each page in the template (like the test PDF function)
@@ -726,6 +800,16 @@ def build_pdf():
                                 final_y = pos_y + pdf_y_offset
                                 can.drawString(final_x, final_y, digit)
                     
+                    elif field_name.startswith("vin_") and not field_name.endswith("_category") and x_positions:
+                        # Handle VIN fields with character-by-character spacing
+                        vin_value = month_data.get(field_name, "")
+                        print(f"🖊️ Rendering VIN field '{field_name}' = '{vin_value}' on page {page_num}")
+                        for i, char in enumerate(vin_value):
+                            if i < len(x_positions):
+                                final_x = x_positions[i] + pdf_x_offset
+                                final_y = pos_y + pdf_y_offset
+                                can.drawString(final_x, final_y, char)
+                    
                     # NEW FIELDS - Address fields
                     elif field_name == "address_line2":
                         final_x = pos_x + pdf_x_offset
@@ -798,12 +882,7 @@ def build_pdf():
                         final_y = pos_y + pdf_y_offset
                         can.drawString(final_x, final_y, data.get("taxpayer_pin", ""))
                         
-                    elif field_name == "tax_credits":
-                        final_x = pos_x + pdf_x_offset
-                        final_y = pos_y + pdf_y_offset
-                        credits = float(data.get("tax_credits", 0))
-                        can.drawRightString(final_x, final_y, f"{credits:.2f}")
-                    
+
                     # Preparer information
                     elif field_name == "preparer_name":
                         if data.get("include_preparer", False):
@@ -816,12 +895,6 @@ def build_pdf():
                             final_x = pos_x + pdf_x_offset
                             final_y = pos_y + pdf_y_offset
                             can.drawString(final_x, final_y, data.get("preparer_ptin", ""))
-                        
-                    elif field_name == "preparer_phone":
-                        if data.get("include_preparer", False):
-                            final_x = pos_x + pdf_x_offset
-                            final_y = pos_y + pdf_y_offset
-                            can.drawString(final_x, final_y, data.get("preparer_phone", ""))
                         
                     elif field_name == "date_prepared":
                         if data.get("include_preparer", False):
@@ -965,10 +1038,22 @@ def build_pdf():
                         final_y = pos_y + pdf_y_offset
                         can.drawString(final_x, final_y, data.get("email", ""))
                         
+                    elif field_name == "used_on_july" and x_positions:
+                        used_on_july = month_data.get("used_on_july", "")
+                        print(f"🖊️ Rendering month field '{field_name}' = '{used_on_july}' on page {page_num}")
+                        for i, digit in enumerate(used_on_july):
+                            if i < len(x_positions):
+                                final_x = x_positions[i] + pdf_x_offset
+                                final_y = pos_y + pdf_y_offset
+                                can.drawString(final_x, final_y, digit)
+                        
                     elif field_name == "used_on_july":
+                        # Fallback for when x_positions is not available
                         final_x = pos_x + pdf_x_offset
                         final_y = pos_y + pdf_y_offset
-                        can.drawString(final_x, final_y, data.get("used_on_july", ""))
+                        used_on_july = month_data.get("used_on_july", "")
+                        print(f"🖊️ Rendering month field '{field_name}' (fallback) = '{used_on_july}' on page {page_num}")
+                        can.drawString(final_x, final_y, used_on_july)
                     
                     # Additional checkbox fields
                     elif field_name == "checkbox_has_disposals":
@@ -1012,11 +1097,60 @@ def build_pdf():
                             should_check = data.get("amended_return", False)
                         elif field_name == "checkbox_final_return":
                             should_check = data.get("final_return", False)
+                        elif field_name == "checkbox_agricultural":
+                            # Check if any vehicle in this month is agricultural
+                            should_check = any(v.get("is_agricultural", False) for v in month_vehicles)
+                            print(f"🔍 Checking agricultural: {[v.get('is_agricultural', False) for v in month_vehicles]} -> {should_check}")
+                        elif field_name == "checkbox_non_agricultural":
+                            # Check if any vehicle in this month is non-agricultural with ≤5,000 miles
+                            should_check = any(v.get("mileage_5000_or_less", False) and not v.get("is_agricultural", False) 
+                                             for v in month_vehicles)
+                            print(f"🔍 Checking non-agricultural ≤5k miles: {[(v.get('mileage_5000_or_less', False), v.get('is_agricultural', False)) for v in month_vehicles]} -> {should_check}")
+                        elif field_name == "checkbox_suspended":
+                            # Check if any vehicle in this month is suspended (category W)
+                            should_check = any(v.get("category", "") == "W" or v.get("is_suspended", False) 
+                                             for v in month_vehicles)
+                            print(f"🔍 Checking suspended: {[(v.get('category', ''), v.get('is_suspended', False)) for v in month_vehicles]} -> {should_check}")
                         
                         if should_check:
                             final_x = pos_x + pdf_x_offset
                             final_y = pos_y + pdf_y_offset
                             can.drawString(final_x, final_y, "X")
+                            print(f"✅ Checking checkbox '{field_name}' on page {page_num} - condition met")
+                    
+                    # NEW VEHICLE STATISTICS FIELDS
+                    elif field_name == "total_reported_vehicles":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, month_data.get("total_reported_vehicles", ""))
+                        
+                    elif field_name == "total_suspended_vehicles":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, month_data.get("total_suspended_vehicles", ""))
+                        
+                    elif field_name == "total_taxable_vehicles":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, month_data.get("total_taxable_vehicles", ""))
+                    
+                    # DYNAMIC VIN FIELDS
+                    elif field_name.startswith("vin_") and not field_name.endswith("_category") and not x_positions:
+                        # Handle VIN fields (vin_1, vin_2, etc.) - fallback when no x_positions available
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        vin_value = month_data.get(field_name, "")
+                        if vin_value:  # Only render if VIN exists
+                            can.drawString(final_x, final_y, vin_value)
+                            
+                    elif field_name.startswith("vin_") and field_name.endswith("_category"):
+                        # Handle VIN category fields (vin_1_category, vin_2_category, etc.)
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        category_value = month_data.get(field_name, "")
+                        print(f"🖊️ Rendering category field '{field_name}' = '{category_value}' on page {page_num}")
+                        if category_value:  # Only render if category exists
+                            can.drawString(final_x, final_y, category_value)
                     
                     elif field_name == "month_checkboxes":
                         # Handle month checkboxes
@@ -1044,51 +1178,102 @@ def build_pdf():
                                 can.drawString(final_x, final_y, str(count))
                     
                     elif field_name == "tax_lines":
-                        # Handle tax calculation lines
-                        if "line1_vehicles" in field_data:
-                            line1_pos = field_data["line1_vehicles"]
-                            final_x = line1_pos["x"] + pdf_x_offset
-                            final_y = line1_pos["y"] + pdf_y_offset
-                            can.setFont(line1_pos["font"], line1_pos["size"])
-                            can.drawRightString(final_x, final_y, str(len(month_vehicles)))
-                        
+                        # Handle Part I tax calculation lines using frontend-calculated values
                         if "line2_tax" in field_data:
                             line2_pos = field_data["line2_tax"]
                             final_x = line2_pos["x"] + pdf_x_offset
                             final_y = line2_pos["y"] + pdf_y_offset
                             can.setFont(line2_pos["font"], line2_pos["size"])
-                            can.drawRightString(final_x, final_y, f"{total_tax:.2f}")
+                            line2_value = month_data.get("line2_tax", f"{total_tax:.2f}")
+                            can.drawRightString(final_x, final_y, line2_value)
                         
                         if "line3_increase" in field_data:
                             line3_pos = field_data["line3_increase"]
                             final_x = line3_pos["x"] + pdf_x_offset
                             final_y = line3_pos["y"] + pdf_y_offset
                             can.setFont(line3_pos["font"], line3_pos["size"])
-                            can.drawRightString(final_x, final_y, "0.00")
+                            line3_value = month_data.get("line3_increase", "0.00")
+                            can.drawRightString(final_x, final_y, line3_value)
                         
                         if "line4_total" in field_data:
                             line4_pos = field_data["line4_total"]
                             final_x = line4_pos["x"] + pdf_x_offset
                             final_y = line4_pos["y"] + pdf_y_offset
                             can.setFont(line4_pos["font"], line4_pos["size"])
-                            can.drawRightString(final_x, final_y, f"{total_tax:.2f}")
+                            line4_value = month_data.get("line4_total", f"{total_tax:.2f}")
+                            can.drawRightString(final_x, final_y, line4_value)
                         
                         if "line5_credits" in field_data:
                             line5_pos = field_data["line5_credits"]
                             final_x = line5_pos["x"] + pdf_x_offset
                             final_y = line5_pos["y"] + pdf_y_offset
                             can.setFont(line5_pos["font"], line5_pos["size"])
-                            credits = float(data.get("tax_credits", 0))
-                            can.drawRightString(final_x, final_y, f"{credits:.2f}")
+                            line5_value = month_data.get("line5_credits", "0.00")
+                            can.drawRightString(final_x, final_y, line5_value)
                         
                         if "line6_balance" in field_data:
                             line6_pos = field_data["line6_balance"]
                             final_x = line6_pos["x"] + pdf_x_offset
                             final_y = line6_pos["y"] + pdf_y_offset
                             can.setFont(line6_pos["font"], line6_pos["size"])
-                            credits = float(data.get("tax_credits", 0))
-                            balance_due = max(0, total_tax - credits)
-                            can.drawRightString(final_x, final_y, f"{balance_due:.2f}")
+                            line6_value = month_data.get("line6_balance", "0.00")
+                            can.drawRightString(final_x, final_y, line6_value)
+                    
+                    # INDIVIDUAL PART I FIELDS - Handle standalone Part I line fields
+                    elif field_name.startswith("line") and "_" in field_name:
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        part_i_value = month_data.get(field_name, "0.00")
+                        print(f"📊 Rendering Part I field '{field_name}' = '{part_i_value}' on page {page_num}")
+                        can.drawRightString(final_x, final_y, part_i_value)
+                    
+
+                    # CATEGORY COUNT FIELDS - Handle count_a_regular, count_a_logging, etc.
+                    elif field_name.startswith("count_") and ("_regular" in field_name or "_logging" in field_name):
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        count_value = month_data.get(field_name, "0")
+                        # Only render if count > 0 to avoid cluttering the form
+                        if count_value and count_value != "0":
+                            print(f"📊 Rendering count field '{field_name}' = '{count_value}' on page {page_num}")
+                            can.drawString(final_x, final_y, count_value)
+                    
+                    # CATEGORY AMOUNT FIELDS - Handle amount_a, amount_b, etc.
+                    elif field_name.startswith("amount_") and not field_name.endswith("_regular") and not field_name.endswith("_logging"):
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        amount_value = month_data.get(field_name, "0.00")
+                        # Only render if amount > 0 to avoid cluttering the form
+                        if amount_value and amount_value != "0.00":
+                            print(f"💰 Rendering amount field '{field_name}' = '{amount_value}' on page {page_num}")
+                            can.drawRightString(final_x, final_y, amount_value)
+                    
+                    # PARTIAL-PERIOD TAX FIELDS - Handle tax_partial_a_regular, tax_partial_a_logging, etc.
+                    elif field_name.startswith("tax_partial_") and ("_regular" in field_name or "_logging" in field_name):
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        partial_tax_value = month_data.get(field_name, "0.00")
+                        # Only render if partial tax > 0 to avoid cluttering the form
+                        if partial_tax_value and partial_tax_value != "0.00":
+                            print(f"📊 Rendering partial tax field '{field_name}' = '{partial_tax_value}' on page {page_num}")
+                            can.drawRightString(final_x, final_y, partial_tax_value)
+                    
+                    # CATEGORY W SUSPENDED COUNT FIELDS
+                    elif field_name == "count_w_suspended_non_logging":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        count_value = month_data.get(field_name, "0")
+                        if count_value and count_value != "0":
+                            print(f"📊 Rendering category W non-logging count = '{count_value}' on page {page_num}")
+                            can.drawString(final_x, final_y, count_value)
+                    
+                    elif field_name == "count_w_suspended_logging":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        count_value = month_data.get(field_name, "0")
+                        if count_value and count_value != "0":
+                            print(f"📊 Rendering category W logging count = '{count_value}' on page {page_num}")
+                            can.drawString(final_x, final_y, count_value)
                 
                 can.save()
                 packet.seek(0)
@@ -1195,6 +1380,7 @@ def build_pdf():
                     'filename': f"form2290_{month_name}_{vehicle_count}vehicles.pdf"
                 })
             
+            print(f"🔄 About to return JSON response...")
             return jsonify({
                 "success": True,
                 "message": f"Generated {len(created_files)} separate PDFs for different months",
@@ -1204,7 +1390,10 @@ def build_pdf():
     
     except Exception as e:
         # Catch-all exception handler to prevent returning None
-        app.logger.error("Unexpected error in build_pdf: %s", e, exc_info=True)
+        app.logger.error("🚨 CRITICAL ERROR in build_pdf at line %d: %s", e.__traceback__.tb_lineno if e.__traceback__ else -1, e, exc_info=True)
+        print(f"🚨 EXCEPTION CAUGHT: {type(e).__name__}: {str(e)}")
+        if hasattr(e, '__traceback__') and e.__traceback__:
+            print(f"🚨 ERROR LINE: {e.__traceback__.tb_lineno}")
         enhanced_audit.log_error_event(
             user_email=request.user.get('email', 'unknown'),
             error_type="SUBMISSION_PROCESSING_ERROR",
@@ -1296,54 +1485,82 @@ def admin_view_submissions():
                 except:
                     form_data = {}
                 
-                # Calculate totals from vehicles
+                # **CALCULATE MONTH-SPECIFIC TAX** using same logic as PDF generation
                 vehicles = form_data.get('vehicles', [])
                 total_vehicles = len(vehicles)
                 
-                # Calculate tax using the same logic as frontend
-                total_tax = 0
-                weight_categories = {
-                    'A': 100.00, 'B': 122.00, 'C': 144.00, 'D': 166.00, 'E': 188.00, 'F': 210.00,
-                    'G': 232.00, 'H': 254.00, 'I': 276.00, 'J': 298.00, 'K': 320.00, 'L': 342.00,
-                    'M': 364.00, 'N': 386.00, 'O': 408.00, 'P': 430.00, 'Q': 452.00, 'R': 474.00,
-                    'S': 496.00, 'T': 518.00, 'U': 540.00, 'V': 550.00, 'W': 0.00
-                }
-                logging_rates = {
-                    'A': 75, 'B': 91.5, 'C': 108, 'D': 124.5, 'E': 141, 'F': 157.5,
-                    'G': 174, 'H': 190.5, 'I': 207, 'J': 223.5, 'K': 240, 'L': 256.5,
-                    'M': 273, 'N': 289.5, 'O': 306, 'P': 322.5, 'Q': 339, 'R': 355.5,
-                    'S': 372, 'T': 388.5, 'U': 405, 'V': 412.5, 'W': 0
-                }
+                # Group vehicles by month for this submission
+                submission_month = submission.month
+                month_vehicles = [v for v in vehicles if v.get('used_month') == submission_month]
                 
-                for vehicle in vehicles:
-                    used_month = vehicle.get('used_month', '')
-                    category = vehicle.get('category', '')
-                    is_logging = vehicle.get('is_logging', False)
-                    is_suspended = vehicle.get('is_suspended', False)
-                    is_agricultural = vehicle.get('is_agricultural', False)
+                # Use frontend categoryData and calculate month-specific tax (same logic as PDF generation)
+                total_tax = 0
+                frontend_category_data = form_data.get('categoryData', {})
+                
+                if frontend_category_data and month_vehicles:
+                    weight_categories_list = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W']
                     
-                    if not used_month or not category or is_suspended or is_agricultural:
-                        continue
-                    
-                    # Extract month number (last 2 digits) - match XML builder logic exactly
-                    try:
-                        month_num = int(used_month[-2:]) if used_month.isdigit() else 0
-                    except:
-                        continue
-                    
-                    # Use exact XML builder logic for months_left calculation
-                    months_left = 12 if month_num >= 7 else (13 - month_num if 1 <= month_num <= 12 else 0)
-                    
-                    if months_left == 0:
-                        continue
-                    
-                    # Get base rate - match XML builder exactly
-                    if category in weight_categories:
-                        base_rate = logging_rates[category] if is_logging else weight_categories[category]
+                    for cat in weight_categories_list:
+                        # Count vehicles in this month for this category
+                        regular_vehicles = [v for v in month_vehicles if v.get("category") == cat and not v.get("is_logging", False)]
+                        logging_vehicles = [v for v in month_vehicles if v.get("category") == cat and v.get("is_logging", False)]
                         
-                        # Calculate tax using exact XML builder formula
-                        vehicle_tax = round(base_rate * (months_left / 12), 2)
-                        total_tax += vehicle_tax
+                        regular_count = len(regular_vehicles)
+                        logging_count = len(logging_vehicles)
+                        
+                        if cat in frontend_category_data:
+                            frontend_cat_data = frontend_category_data[cat]
+                            
+                            # Determine if this is annual (July) or partial-period tax
+                            month_num = int(submission_month[-2:]) if submission_month and len(submission_month) >= 2 else 0
+                            is_annual_month = (month_num == 7)  # July = annual tax
+                            
+                            if is_annual_month:
+                                # Use annual tax rates for July
+                                regular_per_vehicle_rate = frontend_cat_data.get('regularAnnualTax', 0) / max(1, frontend_cat_data.get('regularCount', 1))
+                                logging_per_vehicle_rate = frontend_cat_data.get('loggingAnnualTax', 0) / max(1, frontend_cat_data.get('loggingCount', 1))
+                            else:
+                                # Use partial-period tax rates for all other months
+                                regular_per_vehicle_rate = frontend_cat_data.get('regularPartialTax', 0) / max(1, frontend_cat_data.get('regularCount', 1))
+                                logging_per_vehicle_rate = frontend_cat_data.get('loggingPartialTax', 0) / max(1, frontend_cat_data.get('loggingCount', 1))
+                            
+                            # Calculate month-specific totals using frontend rates
+                            regular_total_tax = regular_count * regular_per_vehicle_rate
+                            logging_total_tax = logging_count * logging_per_vehicle_rate
+                            
+                            total_category_tax = regular_total_tax + logging_total_tax
+                            total_tax += total_category_tax
+                    
+                    print(f"🔍 ADMIN: Submission {submission.id} month-specific tax = ${total_tax:.2f}")
+                
+                else:
+                    # Fallback: Use frontend's total tax if no categoryData available
+                    frontend_part_i = form_data.get('partI', {})
+                    if frontend_part_i and 'line2_tax' in frontend_part_i:
+                        total_tax = float(frontend_part_i['line2_tax'])
+                        print(f"🔍 ADMIN: Using frontend total tax as fallback: ${total_tax:.2f} for submission {submission.id}")
+                    else:
+                        # Last fallback: manual calculation for very old submissions
+                        print(f"⚠️ ADMIN: No frontend data found for submission {submission.id}, using manual calculation")
+                        total_tax = 0  # Will be calculated below
+                    
+                        # Last fallback: manual calculation for very old submissions
+                        print(f"⚠️ ADMIN: No frontend data found for submission {submission.id}, using manual calculation")
+                        
+                        # Simple fallback calculation for old submissions
+                        weight_categories = {
+                            'A': 100.00, 'B': 122.00, 'C': 144.00, 'D': 166.00, 'E': 188.00, 'F': 210.00,
+                            'G': 232.00, 'H': 254.00, 'I': 276.00, 'J': 298.00, 'K': 320.00, 'L': 342.00,
+                            'M': 364.00, 'N': 386.00, 'O': 408.00, 'P': 430.00, 'Q': 452.00, 'R': 474.00,
+                            'S': 496.00, 'T': 518.00, 'U': 540.00, 'V': 550.00, 'W': 0.00
+                        }
+                        
+                        total_tax = 0
+                        for vehicle in vehicles:
+                            if vehicle.get('used_month') == submission_month:  # Only count vehicles for this month
+                                category = vehicle.get('category', '')
+                                if category in weight_categories:
+                                    total_tax += weight_categories[category]
                 
                 # Simple user display - no email lookup for now
                 user_display = f"User: {submission.user_uid[:8]}..." if submission.user_uid else "Unknown"
@@ -1624,54 +1841,63 @@ def user_submissions():
                 except json.JSONDecodeError:
                     form_data = {}
             
-            # Calculate totals from vehicles data (same logic as admin endpoint)
+            # Calculate totals from vehicles data
             vehicles = form_data.get('vehicles', [])
             total_vehicles = len(vehicles)
             
-            # Calculate tax using the same logic as admin endpoint
+            # **USE FRONTEND'S TAX CALCULATION** - Don't recalculate, use frontend's Part I
             total_tax = 0
-            weight_categories = {
-                'A': 100.00, 'B': 122.00, 'C': 144.00, 'D': 166.00, 'E': 188.00, 'F': 210.00,
-                'G': 232.00, 'H': 254.00, 'I': 276.00, 'J': 298.00, 'K': 320.00, 'L': 342.00,
-                'M': 364.00, 'N': 386.00, 'O': 408.00, 'P': 430.00, 'Q': 452.00, 'R': 474.00,
-                'S': 496.00, 'T': 518.00, 'U': 540.00, 'V': 550.00, 'W': 0.00
-            }
-            logging_rates = {
-                'A': 75, 'B': 91.5, 'C': 108, 'D': 124.5, 'E': 141, 'F': 157.5,
-                'G': 174, 'H': 190.5, 'I': 207, 'J': 223.5, 'K': 240, 'L': 256.5,
-                'M': 273, 'N': 289.5, 'O': 306, 'P': 322.5, 'Q': 339, 'R': 355.5,
-                'S': 372, 'T': 388.5, 'U': 405, 'V': 412.5, 'W': 0
-            }
-            
-            for vehicle in vehicles:
-                used_month = vehicle.get('used_month', '')
-                category = vehicle.get('category', '')
-                is_logging = vehicle.get('is_logging', False)
-                is_suspended = vehicle.get('is_suspended', False)
-                is_agricultural = vehicle.get('is_agricultural', False)
+            frontend_part_i = form_data.get('partI', {})
+            if frontend_part_i and 'line2_tax' in frontend_part_i:
+                # Use the frontend's calculated tax from column 4 of Tax Computation by Category
+                total_tax = float(frontend_part_i['line2_tax'])
+                print(f"🔍 USER: Using frontend tax calculation: ${total_tax:.2f} for submission {submission.id}")
+            else:
+                # Fallback: If no frontend Part I data available (old submissions), calculate manually
+                print(f"⚠️ USER: No frontend partI data found for submission {submission.id}, falling back to calculation")
                 
-                if not used_month or not category or is_suspended or is_agricultural:
-                    continue
+                weight_categories = {
+                    'A': 100.00, 'B': 122.00, 'C': 144.00, 'D': 166.00, 'E': 188.00, 'F': 210.00,
+                    'G': 232.00, 'H': 254.00, 'I': 276.00, 'J': 298.00, 'K': 320.00, 'L': 342.00,
+                    'M': 364.00, 'N': 386.00, 'O': 408.00, 'P': 430.00, 'Q': 452.00, 'R': 474.00,
+                    'S': 496.00, 'T': 518.00, 'U': 540.00, 'V': 550.00, 'W': 0.00
+                }
+                logging_rates = {
+                    'A': 75, 'B': 91.5, 'C': 108, 'D': 124.5, 'E': 141, 'F': 157.5,
+                    'G': 174, 'H': 190.5, 'I': 207, 'J': 223.5, 'K': 240, 'L': 256.5,
+                    'M': 273, 'N': 289.5, 'O': 306, 'P': 322.5, 'Q': 339, 'R': 355.5,
+                    'S': 372, 'T': 388.5, 'U': 405, 'V': 412.5, 'W': 0
+                }
                 
-                # Extract month number (last 2 digits) - match XML builder logic exactly
-                try:
-                    month_num = int(used_month[-2:]) if used_month.isdigit() else 0
-                except:
-                    continue
-                
-                # Use exact XML builder logic for months_left calculation
-                months_left = 12 if month_num >= 7 else (13 - month_num if 1 <= month_num <= 12 else 0)
-                
-                if months_left == 0:
-                    continue
-                
-                # Get base rate - match XML builder exactly
-                if category in weight_categories:
-                    base_rate = logging_rates[category] if is_logging else weight_categories[category]
+                for vehicle in vehicles:
+                    used_month = vehicle.get('used_month', '')
+                    category = vehicle.get('category', '')
+                    is_logging = vehicle.get('is_logging', False)
+                    is_suspended = vehicle.get('is_suspended', False)
+                    is_agricultural = vehicle.get('is_agricultural', False)
                     
-                    # Calculate tax using exact XML builder formula
-                    vehicle_tax = round(base_rate * (months_left / 12), 2)
-                    total_tax += vehicle_tax
+                    if not used_month or not category:
+                        continue
+                    
+                    # Extract month number (last 2 digits) - match frontend logic exactly
+                    try:
+                        month_num = int(used_month[-2:]) if used_month else 0
+                    except:
+                        continue
+                    
+                    # Use exact XML builder logic for months_left calculation
+                    months_left = 12 if month_num >= 7 else (13 - month_num if 1 <= month_num <= 12 else 0)
+                    
+                    if months_left == 0:
+                        continue
+                    
+                    # Get base rate - match XML builder exactly
+                    if category in weight_categories:
+                        base_rate = logging_rates[category] if is_logging else weight_categories[category]
+                        
+                        # Calculate tax using exact XML builder formula
+                        vehicle_tax = round(base_rate * (months_left / 12), 2)
+                        total_tax += vehicle_tax
             
             submissions_list.append({
                 "id": str(submission.id),
@@ -1927,193 +2153,6 @@ def reload_positions():
         audit_logger.error(f"reload_positions: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
-@app.route('/api/generate-test-pdf', methods=['POST'])
-def generate_test_pdf():
-    """Generate a test PDF with current positions for validation using the actual Form 2290 template"""
-    try:
-        # Get test data from request
-        test_data = request.get_json()
-        
-        # Use current form positions
-        positions = FORM_POSITIONS
-        
-        audit_logger.info("generate_test_pdf: Generating test PDF with current positions using actual template")
-        
-        # Load the actual Form 2290 template
-        template_path = os.path.join(os.path.dirname(__file__), "f2290_template.pdf")
-        if not os.path.exists(template_path):
-            return jsonify({"error": "Form template not found"}), 404
-            
-        try:
-            template = PdfReader(open(template_path, "rb"), strict=False)
-        except Exception as e:
-            return jsonify({"error": f"Could not read template: {str(e)}"}), 500
-
-        writer = PdfWriter()
-        overlays = []
-
-        # Process each page of the template
-        for pg_idx in range(len(template.pages)):
-            if pg_idx == 0:  # Only overlay on first page
-                packet = io.BytesIO()
-                can = canvas.Canvas(packet, pagesize=letter)
-                
-                # === BUSINESS INFORMATION SECTION ===
-                
-                # Set text color to BLACK to ensure visibility
-                can.setFillColorRGB(0, 0, 0)  # Black text
-                
-                # Business Name
-                if 'business_name' in positions and 'business_name' in test_data:
-                    pos = positions['business_name']
-                    can.setFont(pos.get('font', 'Helvetica'), pos.get('size', 10))
-                    # Use coordinates directly (frontend coordinates are already in PDF coordinate system)
-                    pdf_y = pos['y']
-                    can.drawString(pos['x'], pdf_y, str(test_data['business_name']))
-                    
-                    # Add debug marker
-                    can.setFillColorRGB(1, 0, 0)  # Red
-                    can.drawString(pos['x'] - 5, pdf_y + 5, "BN")
-                    can.setFillColorRGB(0, 0, 0)  # Back to black
-                
-                # Address
-                if 'address' in positions and 'address' in test_data:
-                    pos = positions['address']
-                    can.setFont(pos.get('font', 'Helvetica'), pos.get('size', 9))
-                    pdf_y = pos['y']
-                    can.drawString(pos['x'], pdf_y, str(test_data['address']))
-                    
-                    # Add debug marker
-                    can.setFillColorRGB(1, 0, 0)  # Red
-                    can.drawString(pos['x'] - 5, pdf_y + 5, "AD")
-                    can.setFillColorRGB(0, 0, 0)  # Back to black
-                
-                # City, State, ZIP
-                if 'city_state_zip' in positions and 'city_state_zip' in test_data:
-                    pos = positions['city_state_zip']
-                    can.setFont(pos.get('font', 'Helvetica'), pos.get('size', 9))
-                    pdf_y = pos['y']
-                    can.drawString(pos['x'], pdf_y, str(test_data['city_state_zip']))
-                    
-                    # Add debug marker
-                    can.setFillColorRGB(1, 0, 0)  # Red
-                    can.drawString(pos['x'] - 5, pdf_y + 5, "CS")
-                    can.setFillColorRGB(0, 0, 0)  # Back to black
-                
-                # Tax Year
-                if 'tax_year' in positions and 'tax_year' in test_data:
-                    pos = positions['tax_year']
-                    can.setFont(pos.get('font', 'Helvetica-Bold'), pos.get('size', 11))
-                    pdf_y = pos['y']
-                    can.drawString(pos['x'], pdf_y, str(test_data['tax_year']))
-                    
-                    # Add debug marker
-                    can.setFillColorRGB(1, 0, 0)  # Red
-                    can.drawString(pos['x'] - 5, pdf_y + 5, "TY")
-                    can.setFillColorRGB(0, 0, 0)  # Back to black
-                
-                # EIN Digits (individual digit positioning)
-                if 'ein_digits' in positions and 'ein_digits' in test_data:
-                    pos = positions['ein_digits']
-                    ein = str(test_data['ein_digits'])
-                    if 'x_positions' in pos and len(ein) >= len(pos['x_positions']):
-                        can.setFont(pos.get('font', 'Helvetica'), pos.get('size', 10))
-                        pdf_y = pos['y']
-                        for i, x_pos in enumerate(pos['x_positions']):
-                            if i < len(ein):
-                                can.drawString(x_pos, pdf_y, ein[i])
-                        
-                        # Add debug marker for EIN area
-                        can.setFillColorRGB(1, 0, 0)  # Red
-                        can.drawString(pos['x_positions'][0] - 10, pdf_y + 5, "EIN")
-                        can.setFillColorRGB(0, 0, 0)  # Back to black
-                
-                # === CHECKBOXES SECTION ===
-                
-                # Set checkbox color to RED for visibility
-                can.setFillColorRGB(1, 0, 0)  # Red X marks
-                
-                # Address Change checkbox
-                if 'checkbox_address_change' in positions and test_data.get('checkbox_address_change'):
-                    pos = positions['checkbox_address_change']
-                    can.setFont(pos.get('font', 'Helvetica-Bold'), pos.get('size', 10))
-                    pdf_y = pos['y']
-                    can.drawString(pos['x'], pdf_y, "X")
-                
-                # VIN Correction checkbox
-                if 'checkbox_vin_correction' in positions and test_data.get('checkbox_vin_correction'):
-                    pos = positions['checkbox_vin_correction']
-                    can.setFont(pos.get('font', 'Helvetica-Bold'), pos.get('size', 10))
-                    pdf_y = pos['y']
-                    can.drawString(pos['x'], pdf_y, "X")
-                
-                # Amended Return checkbox
-                if 'checkbox_amended_return' in positions and test_data.get('checkbox_amended_return'):
-                    pos = positions['checkbox_amended_return']
-                    can.setFont(pos.get('font', 'Helvetica-Bold'), pos.get('size', 10))
-                    pdf_y = pos['y']
-                    can.drawString(pos['x'], pdf_y, "X")
-                
-                # Final Return checkbox
-                if 'checkbox_final_return' in positions and test_data.get('checkbox_final_return'):
-                    pos = positions['checkbox_final_return']
-                    can.setFont(pos.get('font', 'Helvetica-Bold'), pos.get('size', 10))
-                    pdf_y = pos['y']
-                    can.drawString(pos['x'], pdf_y, "X")
-                
-                # Reset color to black
-                can.setFillColorRGB(0, 0, 0)
-                
-                # === TEST IDENTIFICATION OVERLAY ===
-                # Add a semi-transparent watermark to identify this as a test
-                can.setFillColorRGB(1, 0, 0, alpha=0.3)  # Red with transparency
-                can.setFont('Helvetica-Bold', 48)
-                can.saveState()
-                can.translate(306, 400)  # Center of page
-                can.rotate(45)  # Diagonal
-                can.drawCentredString(0, 0, "TEST PDF")
-                can.restoreState()
-                
-                # Add test generation info in corner
-                can.setFillColorRGB(0, 0, 0)  # Black text
-                can.setFont('Helvetica', 8)
-                timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                can.drawString(400, 750, f"Generated: {timestamp}")
-                can.drawString(400, 740, "Position Tuner Test")
-                
-                can.save()
-                packet.seek(0)
-                overlay_page = PdfReader(packet).pages[0]
-                overlays.append(overlay_page)
-            else:
-                overlays.append(None)
-
-        # Merge overlays with template pages
-        for idx, page in enumerate(template.pages):
-            if overlays[idx]:
-                page.merge_page(overlays[idx])
-            writer.add_page(page)
-
-        # Create the final PDF
-        buffer = io.BytesIO()
-        writer.write(buffer)
-        buffer.seek(0)
-        pdf_data = buffer.getvalue()
-        buffer.close()
-        
-        audit_logger.info("generate_test_pdf: Test PDF with template generated successfully")
-        
-        # Create response
-        response = make_response(pdf_data)
-        response.headers['Content-Type'] = 'application/pdf'
-        response.headers['Content-Disposition'] = f'attachment; filename="test_form2290_{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.pdf"'
-        
-        return response
-        
-    except Exception as e:
-        audit_logger.error(f"generate_test_pdf: {str(e)}")
-        return jsonify({"error": str(e)}), 500
-
 @app.route('/health', methods=['GET'])
 def health_check():
     """Health check endpoint for position tuner"""
@@ -2173,7 +2212,7 @@ def test_pdf_with_offsets():
     """Generate a test PDF with sample data using current offset settings for all pages"""
     print("=== TEST PDF GENERATION STARTED ===")
     try:
-        # Sample test data
+        # Sample test data with comprehensive field coverage
         test_data = {
             "business_name": "TEST COMPANY LLC",
             "address": "123 Test Street",
@@ -2182,10 +2221,171 @@ def test_pdf_with_offsets():
             "zip": "12345",
             "ein": "123456789",
             "tax_year": "2025",
+            "used_on_july": "202507",
             "address_change": True,
-            "vin_correction": False,
-            "amended_return": False,
-            "final_return": False,
+            "vin_correction": True,  # Changed to True to show this checkbox
+            "amended_return": True,  # Changed to True to show this checkbox
+            "final_return": True,   # Changed to True to show this checkbox
+            "has_disposals": True,   # Added this field
+            "consent_to_disclose": True,  # Added this field
+            "preparer_self_employed": True,  # Added this field
+            "payEFTPS": True,  # Added this field
+            "payCard": True,  # Changed to True to show this checkbox
+            
+            # Officer information
+            "officer_name": "John Smith",
+            "officer_title": "President",
+            "printed_name": "John Smith",
+            "signature": "John Smith",
+            "signature_date": "2025-07-05",
+            "taxpayer_phone": "5551234567",
+
+            # Preparer information
+            "preparer_name": "Jane Preparer",
+            "preparer_ptin": "P12345678",
+            "date_prepared": "2025-07-05",
+            "preparer_firm_name": "Tax Prep LLC",
+            "preparer_firm_ein": "987654321",
+            "preparer_firm_address": "456 Tax Street",
+            "preparer_firm_citystatezip": "Tax City, TX 67890",
+            "preparer_firm_phone": "5559876543",
+            
+            # Designee information
+            "designee_name": "Bob Designee",
+            "designee_phone": "5555551234",
+            "designee_pin": "54321",
+            
+            # Explanation fields
+            "reasonable_cause_explanation": "Test explanation for amended return filing.",
+            
+            # Page 2 fields - Count fields (vehicle counts by category)
+            "count_a_logging": "5",
+            "count_a_regular": "3",
+            "count_b_logging": "2", 
+            "count_b_regular": "7",
+            "count_c_logging": "1",
+            "count_c_regular": "4",
+            "count_d_logging": "6",
+            "count_d_regular": "2",
+            "count_e_logging": "3",
+            "count_e_regular": "8",
+            "count_f_logging": "1",
+            "count_f_regular": "5",
+            "count_g_logging": "2",
+            "count_g_regular": "3",
+            "count_h_logging": "4",
+            "count_h_regular": "1",
+            "count_i_logging": "7",
+            "count_i_regular": "2",
+            "count_j_logging": "1",
+            "count_j_regular": "6",
+            "count_k_logging": "3",
+            "count_k_regular": "4",
+            "count_l_logging": "2",
+            "count_l_regular": "5",
+            "count_m_logging": "1",
+            "count_m_regular": "3",
+            "count_n_logging": "4",
+            "count_n_regular": "2",
+            "count_o_logging": "1",
+            "count_o_regular": "7",
+            "count_p_logging": "2",
+            "count_p_regular": "1",
+            "count_q_logging": "3",
+            "count_q_regular": "2",
+            "count_r_logging": "1",
+            "count_r_regular": "4",
+            "count_s_logging": "2",
+            "count_s_regular": "3",
+            "count_t_logging": "1",
+            "count_t_regular": "2",
+            "count_u_logging": "3",
+            "count_u_regular": "1",
+            "count_v_logging": "2",
+            "count_v_regular": "4",
+            "count_w_suspended_logging": "1",
+            "count_w_suspended_non_logging": "2",
+            
+            # Amount fields (tax amounts by category)
+            "amount_a": "1250.00",
+            "amount_b": "875.00",
+            "amount_c": "650.00",
+            "amount_d": "1100.00",
+            "amount_e": "950.00",
+            "amount_f": "750.00",
+            "amount_g": "825.00",
+            "amount_h": "425.00",
+            "amount_i": "1375.00",
+            "amount_j": "625.00",
+            "amount_k": "1050.00",
+            "amount_l": "800.00",
+            "amount_m": "500.00",
+            "amount_n": "725.00",
+            "amount_o": "1200.00",
+            "amount_p": "350.00",
+            "amount_q": "675.00",
+            "amount_r": "925.00",
+            "amount_s": "775.00",
+            "amount_t": "525.00",
+            "amount_u": "850.00",
+            "amount_v": "1150.00",
+            "amount_w_suspended": "275.00",
+            
+            # Tax partial fields (partial period tax calculations)
+            "tax_partial_a_logging": "125.50",
+            "tax_partial_a_regular": "87.25",
+            "tax_partial_b_logging": "95.75",
+            "tax_partial_b_regular": "142.00",
+            "tax_partial_c_logging": "68.50",
+            "tax_partial_c_regular": "110.25",
+            "tax_partial_d_logging": "156.75",
+            "tax_partial_d_regular": "73.50",
+            "tax_partial_e_logging": "89.25",
+            "tax_partial_e_regular": "167.00",
+            "tax_partial_f_logging": "45.75",
+            "tax_partial_f_regular": "98.50",
+            "tax_partial_g_logging": "112.25",
+            "tax_partial_g_regular": "76.75",
+            "tax_partial_h_logging": "134.50",
+            "tax_partial_h_regular": "52.25",
+            "tax_partial_i_logging": "178.75",
+            "tax_partial_i_regular": "91.50",
+            "tax_partial_j_logging": "64.25",
+            "tax_partial_j_regular": "123.75",
+            "tax_partial_k_logging": "145.50",
+            "tax_partial_k_regular": "82.25",
+            "tax_partial_l_logging": "67.75",
+            "tax_partial_l_regular": "129.50",
+            "tax_partial_m_logging": "58.25",
+            "tax_partial_m_regular": "104.75",
+            "tax_partial_n_logging": "116.50",
+            "tax_partial_n_regular": "71.25",
+            "tax_partial_o_logging": "93.75",
+            "tax_partial_o_regular": "158.50",
+            "tax_partial_p_logging": "79.25",
+            "tax_partial_p_regular": "42.75",
+            "tax_partial_q_logging": "127.50",
+            "tax_partial_q_regular": "85.25",
+            "tax_partial_r_logging": "61.75",
+            "tax_partial_r_regular": "139.50",
+            "tax_partial_s_logging": "103.25",
+            "tax_partial_s_regular": "74.75",
+            "tax_partial_t_logging": "88.50",
+            "tax_partial_t_regular": "151.25",
+            "tax_partial_u_logging": "96.75",
+            "tax_partial_u_regular": "69.50",
+            "tax_partial_v_logging": "121.25",
+            "tax_partial_v_regular": "84.75",
+            
+            # Part I Tax Summary fields - Now using frontend calculated values
+            "line2_tax": "15750.50", 
+            "line3_increase": "0.00",
+            "line4_total": "15750.50",
+            "line5_credits": "250.00",
+            "line6_balance": "15500.50",
+            "total_logging_vehicles": "55",
+            "total_regular_vehicles": "72",
+            
             "vehicles": [
                 {
                     "vin": "1HGBH41JXMN109186",
@@ -2194,9 +2394,210 @@ def test_pdf_with_offsets():
                     "is_logging": False,
                     "is_suspended": False,
                     "is_agricultural": False
+                },
+                {
+                    "vin": "2HGBH41JXMN109187",
+                    "category": "W",
+                    "used_month": "202507",
+                    "is_logging": False,
+                    "is_suspended": False,
+                    "is_agricultural": True
+                },
+                {
+                    "vin": "3HGBH41JXMN109188",
+                    "category": "W",
+                    "used_month": "202507",
+                    "is_logging": False,
+                    "is_suspended": True,
+                    "is_agricultural": False
+                },
+                {
+                    "vin": "4HGBH41JXMN109189",
+                    "category": "B",
+                    "used_month": "202507",
+                    "is_logging": False,
+                    "is_suspended": False,
+                    "is_agricultural": False
+                },
+                {
+                    "vin": "5HGBH41JXMN109190",
+                    "category": "C",
+                    "used_month": "202507",
+                    "is_logging": False,
+                    "is_suspended": False,
+                    "is_agricultural": False
+                },
+                {
+                    "vin": "6HGBH41JXMN109191",
+                    "category": "D",
+                    "used_month": "202507",
+                    "is_logging": False,
+                    "is_suspended": False,
+                    "is_agricultural": False
+                },
+                {
+                    "vin": "7HGBH41JXMN109192",
+                    "category": "E",
+                    "used_month": "202507",
+                    "is_logging": False,
+                    "is_suspended": False,
+                    "is_agricultural": False
+                },
+                {
+                    "vin": "8HGBH41JXMN109193",
+                    "category": "F",
+                    "used_month": "202507",
+                    "is_logging": False,
+                    "is_suspended": False,
+                    "is_agricultural": False
+                },
+                {
+                    "vin": "9HGBH41JXMN109194",
+                    "category": "G",
+                    "used_month": "202507",
+                    "is_logging": False,
+                    "is_suspended": False,
+                    "is_agricultural": False
+                },
+                {
+                    "vin": "1AHGBH41JXMN10919",
+                    "category": "H",
+                    "used_month": "202507",
+                    "is_logging": False,
+                    "is_suspended": False,
+                    "is_agricultural": False
+                },
+                {
+                    "vin": "1BHGBH41JXMN10919",
+                    "category": "I",
+                    "used_month": "202507",
+                    "is_logging": False,
+                    "is_suspended": False,
+                    "is_agricultural": False
+                },
+                {
+                    "vin": "1CHGBH41JXMN10919",
+                    "category": "J",
+                    "used_month": "202507",
+                    "is_logging": False,
+                    "is_suspended": False,
+                    "is_agricultural": False
+                },
+                {
+                    "vin": "1DHGBH41JXMN10919",
+                    "category": "K",
+                    "used_month": "202507",
+                    "is_logging": False,
+                    "is_suspended": False,
+                    "is_agricultural": False
+                },
+                {
+                    "vin": "1EHGBH41JXMN10919",
+                    "category": "L",
+                    "used_month": "202507",
+                    "is_logging": False,
+                    "is_suspended": False,
+                    "is_agricultural": False
+                },
+                {
+                    "vin": "1FHGBH41JXMN10919",
+                    "category": "M",
+                    "used_month": "202507",
+                    "is_logging": False,
+                    "is_suspended": False,
+                    "is_agricultural": False
+                },
+                {
+                    "vin": "1GHGBH41JXMN10919",
+                    "category": "N",
+                    "used_month": "202507",
+                    "is_logging": False,
+                    "is_suspended": False,
+                    "is_agricultural": False
+                },
+                {
+                    "vin": "1HHGBH41JXMN10919",
+                    "category": "O",
+                    "used_month": "202507",
+                    "is_logging": False,
+                    "is_suspended": False,
+                    "is_agricultural": False
+                },
+                {
+                    "vin": "1IHGBH41JXMN10919",
+                    "category": "P",
+                    "used_month": "202507",
+                    "is_logging": False,
+                    "is_suspended": False,
+                    "is_agricultural": False
+                },
+                {
+                    "vin": "1JHGBH41JXMN10919",
+                    "category": "Q",
+                    "used_month": "202507",
+                    "is_logging": False,
+                    "is_suspended": False,
+                    "is_agricultural": False
+                },
+                {
+                    "vin": "1KHGBH41JXMN10919",
+                    "category": "R",
+                    "used_month": "202507",
+                    "is_logging": False,
+                    "is_suspended": False,
+                    "is_agricultural": False
+                },
+                {
+                    "vin": "1LHGBH41JXMN10919",
+                    "category": "S",
+                    "used_month": "202507",
+                    "is_logging": False,
+                    "is_suspended": False,
+                    "is_agricultural": False
+                },
+                {
+                    "vin": "1MHGBH41JXMN10919",
+                    "category": "T",
+                    "used_month": "202507",
+                    "is_logging": False,
+                    "is_suspended": False,
+                    "is_agricultural": False
+                },
+                {
+                    "vin": "1NHGBH41JXMN10919",
+                    "category": "U",
+                    "used_month": "202507",
+                    "is_logging": False,
+                    "is_suspended": False,
+                    "is_agricultural": False
+                },
+                {
+                    "vin": "1OHGBH41JXMN10919",
+                    "category": "V",
+                    "used_month": "202507",
+                    "is_logging": False,
+                    "is_suspended": False,
+                    "is_agricultural": False
                 }
             ]
         }
+        
+        # Calculate vehicle statistics
+        vehicles = test_data.get("vehicles", [])
+        total_reported = len(vehicles)
+        total_suspended = len([v for v in vehicles if v.get("category") == "W"])
+        total_taxable = total_reported - total_suspended
+        
+        # Add calculated statistics to test data
+        test_data["total_reported_vehicles"] = str(total_reported)
+        test_data["total_suspended_vehicles"] = str(total_suspended) 
+        test_data["total_taxable_vehicles"] = str(total_taxable)
+        
+        # Add dynamic VIN fields to test data
+        for i, vehicle in enumerate(vehicles, 1):
+            if i <= 24:  # Support up to 24 VINs as defined in positions
+                test_data[f"vin_{i}"] = vehicle.get("vin", "")
+                test_data[f"vin_{i}_category"] = vehicle.get("category", "")
         
         # Load template
         template_path = os.path.join(os.path.dirname(__file__), "f2290_template.pdf")
@@ -2211,9 +2612,7 @@ def test_pdf_with_offsets():
         writer = PdfWriter()
         
         # Process each page in the template
-        print(f"Processing {len(template.pages)} pages...")
         for page_num in range(1, len(template.pages) + 1):
-            print(f"Processing page {page_num}")
             
             # Create overlay for this page
             packet = io.BytesIO()
@@ -2238,7 +2637,10 @@ def test_pdf_with_offsets():
                 if page_num in field_pages:
                     fields_on_page.append(field_name)
             
-            print(f"Fields on page {page_num}: {fields_on_page}")
+            # Calculate conditional checkboxes visibility for test data
+            has_agricultural = any(v.get("is_agricultural", False) for v in test_data["vehicles"])
+            has_suspended = any(v.get("is_suspended", False) and not v.get("is_agricultural", False) for v in test_data["vehicles"])
+            has_non_agricultural = any(not v.get("is_agricultural", False) and not v.get("is_suspended", False) for v in test_data["vehicles"])
             
             # Render fields for this page
             for field_name in fields_on_page:
@@ -2246,7 +2648,14 @@ def test_pdf_with_offsets():
                 
                 # Skip fields that don't have x,y coordinates (special field types)
                 if "x" not in field_data or "y" not in field_data:
-                    print(f"Skipping special field type: {field_name}")
+                    continue
+                
+                # Skip conditional checkboxes that shouldn't be rendered based on vehicle data
+                if field_name == "checkbox_agricultural" and not has_agricultural:
+                    continue
+                elif field_name == "checkbox_suspended" and not has_suspended:
+                    continue
+                elif field_name == "checkbox_non_agricultural" and not has_non_agricultural:
                     continue
                 
                 # Get position for this specific page (handle page-specific positions)
@@ -2271,78 +2680,290 @@ def test_pdf_with_offsets():
                 can.setFont(field_data["font"], field_data["size"])
                 
                 # Render based on field type
-                if field_name == "tax_year":
-                    final_x = pos_x + pdf_x_offset
-                    final_y = pos_y + pdf_y_offset
-                    can.drawString(final_x, final_y, test_data["tax_year"])
-                    
-                elif field_name == "business_name":
-                    final_x = pos_x + pdf_x_offset
-                    final_y = pos_y + pdf_y_offset
-                    can.drawString(final_x, final_y, test_data["business_name"])
-                    
-                elif field_name == "address":
-                    final_x = pos_x + pdf_x_offset
-                    final_y = pos_y + pdf_y_offset
-                    can.drawString(final_x, final_y, test_data["address"])
-                    
-                elif field_name == "city_state_zip":
-                    final_x = pos_x + pdf_x_offset
-                    final_y = pos_y + pdf_y_offset
-                    city_state_zip = f"{test_data['city']}, {test_data['state']} {test_data['zip']}"
-                    can.drawString(final_x, final_y, city_state_zip)
-                    
-                elif field_name == "ein_digits" and x_positions:
-                    ein = test_data["ein"]
-                    for i, digit in enumerate(ein):
-                        if i < len(x_positions):
-                            final_x = x_positions[i] + pdf_x_offset
-                            final_y = pos_y + pdf_y_offset
-                            can.drawString(final_x, final_y, digit)
-                
-                elif field_name.startswith("checkbox_"):
-                    # Test checkboxes
-                    should_check = False
-                    if field_name == "checkbox_address_change":
-                        should_check = test_data.get("address_change", False)
-                    elif field_name == "checkbox_vin_correction":
-                        should_check = test_data.get("vin_correction", False)
-                    elif field_name == "checkbox_amended_return":
-                        should_check = test_data.get("amended_return", False)
-                    elif field_name == "checkbox_final_return":
-                        should_check = test_data.get("final_return", False)
-                    
-                    if should_check:
+                try:
+                    if field_name == "tax_year":
                         final_x = pos_x + pdf_x_offset
                         final_y = pos_y + pdf_y_offset
-                        can.drawString(final_x, final_y, "X")
+                        can.drawString(final_x, final_y, test_data["tax_year"])
+                        
+                    elif field_name == "business_name":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, test_data["business_name"])
+                        
+                    elif field_name == "address":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, test_data["address"])
+                        
+                    elif field_name == "city_state_zip":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        city_state_zip = f"{test_data['city']}, {test_data['state']} {test_data['zip']}"
+                        can.drawString(final_x, final_y, city_state_zip)
+                        
+                    elif field_name == "used_on_july" and x_positions:
+                        used_on_july = test_data["used_on_july"]
+                        for i, digit in enumerate(used_on_july):
+                            if i < len(x_positions):
+                                final_x = x_positions[i] + pdf_x_offset
+                                final_y = pos_y + pdf_y_offset
+                                can.drawString(final_x, final_y, digit)
+                        
+                    elif field_name == "used_on_july":
+                        # Fallback for when x_positions is not available
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, test_data["used_on_july"])
+                        
+                    elif field_name == "officer_name":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, test_data["officer_name"])
+                        
+                    elif field_name == "officer_title":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, test_data["officer_title"])
+                        
+                    elif field_name == "printed_name":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, test_data["printed_name"])
+                        
+                    elif field_name == "signature":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, test_data["signature"])
+                        
+                    elif field_name == "signature_date":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, test_data["signature_date"])
+                        
+                    elif field_name == "taxpayer_phone":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, test_data["taxpayer_phone"])
+                        
+
+                    elif field_name == "preparer_name":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, test_data["preparer_name"])
+                        
+                    elif field_name == "preparer_ptin":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, test_data["preparer_ptin"])
+                        
+                    elif field_name == "date_prepared":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, test_data["date_prepared"])
+                        
+                    elif field_name == "preparer_firm_name":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, test_data["preparer_firm_name"])
+                        
+                    elif field_name == "preparer_firm_ein":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, test_data["preparer_firm_ein"])
+                        
+                    elif field_name == "preparer_firm_address":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, test_data["preparer_firm_address"])
+                        
+                    elif field_name == "preparer_firm_citystatezip":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, test_data["preparer_firm_citystatezip"])
+                        
+                    elif field_name == "preparer_firm_phone":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, test_data["preparer_firm_phone"])
+                        
+                    elif field_name == "designee_name":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, test_data["designee_name"])
+                        
+                    elif field_name == "designee_phone":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, test_data["designee_phone"])
+                        
+                    elif field_name == "designee_pin":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, test_data["designee_pin"])
+                        
+                    elif field_name == "reasonable_cause_explanation":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, test_data["reasonable_cause_explanation"])
+                        
+                    elif field_name == "ein_digits" and x_positions:
+                        ein = test_data["ein"]
+                        for i, digit in enumerate(ein):
+                            if i < len(x_positions):
+                                final_x = x_positions[i] + pdf_x_offset
+                                final_y = pos_y + pdf_y_offset
+                                can.drawString(final_x, final_y, digit)
+                    
+                    elif field_name.startswith("vin_") and not field_name.endswith("_category") and x_positions:
+                        # Handle VIN fields with character-by-character spacing
+                        vin_value = test_data.get(field_name, "")
+                        for i, char in enumerate(vin_value):
+                            if i < len(x_positions):
+                                final_x = x_positions[i] + pdf_x_offset
+                                final_y = pos_y + pdf_y_offset
+                                can.drawString(final_x, final_y, char)
+                    
+                    elif field_name.startswith("checkbox_"):
+                        # Test checkboxes
+                        should_check = False
+                        if field_name == "checkbox_address_change":
+                            should_check = test_data.get("address_change", False)
+                        elif field_name == "checkbox_vin_correction":
+                            should_check = test_data.get("vin_correction", False)
+                        elif field_name == "checkbox_amended_return":
+                            should_check = test_data.get("amended_return", False)
+                        elif field_name == "checkbox_final_return":
+                            should_check = test_data.get("final_return", False)
+                        elif field_name == "checkbox_has_disposals":
+                            should_check = test_data.get("has_disposals", False)
+                        elif field_name == "checkbox_consent_to_disclose":
+                            should_check = test_data.get("consent_to_disclose", False)
+                        elif field_name == "checkbox_preparer_self_employed":
+                            should_check = test_data.get("preparer_self_employed", False)
+                        elif field_name == "checkbox_payEFTPS":
+                            should_check = test_data.get("payEFTPS", False)
+                        elif field_name == "checkbox_payCard":
+                            should_check = test_data.get("payCard", False)
+                        elif field_name == "checkbox_agricultural":
+                            should_check = has_agricultural  # Show checkbox if there are agricultural vehicles
+                        elif field_name == "checkbox_suspended":
+                            should_check = has_suspended  # Show checkbox if there are suspended vehicles
+                        elif field_name == "checkbox_non_agricultural":
+                            should_check = has_non_agricultural  # Show checkbox if there are non-agricultural vehicles
+                        
+                        if should_check:
+                            final_x = pos_x + pdf_x_offset
+                            final_y = pos_y + pdf_y_offset
+                            can.drawString(final_x, final_y, "X")
+                    
+                    # NEW VEHICLE STATISTICS FIELDS
+                    elif field_name == "total_reported_vehicles":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, test_data.get("total_reported_vehicles", ""))
+                        
+                    elif field_name == "total_suspended_vehicles":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, test_data.get("total_suspended_vehicles", ""))
+                        
+                    elif field_name == "total_taxable_vehicles":
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, test_data.get("total_taxable_vehicles", ""))
+                    
+                    # DYNAMIC VIN FIELDS
+                    elif field_name.startswith("vin_") and not field_name.endswith("_category"):
+                        # Handle VIN fields (vin_1, vin_2, etc.)
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        vin_value = test_data.get(field_name, "")
+                        if vin_value:  # Only render if VIN exists
+                            can.drawString(final_x, final_y, vin_value)
+                            
+                    elif field_name.startswith("vin_") and field_name.endswith("_category"):
+                        # Handle VIN category fields (vin_1_category, vin_2_category, etc.)
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        category_value = test_data.get(field_name, "")
+                        if category_value:  # Only render if category exists
+                            can.drawString(final_x, final_y, category_value)
+                    
+                    # PAGE 2 FIELDS - Count fields (vehicle counts by category)
+                    elif field_name.startswith("count_") and field_name in test_data:
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, test_data[field_name])
+                    
+                    # PAGE 2 FIELDS - Amount fields (tax amounts by category)
+                    elif field_name.startswith("amount_") and field_name in test_data:
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, test_data[field_name])
+                    
+                    # PAGE 2 FIELDS - Tax partial fields (partial period tax calculations)
+                    elif field_name.startswith("tax_partial_") and field_name in test_data:
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, test_data[field_name])
+                    
+
+                    # TAX SUMMARY LINE FIELDS
+                    elif field_name.startswith("line") and field_name in test_data:
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, test_data[field_name])
+                    
+                    # TOTAL VEHICLE COUNT FIELDS
+                    elif field_name.startswith("total_") and "vehicles" in field_name and field_name in test_data:
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        can.drawString(final_x, final_y, test_data[field_name])
+                    
+                    else:
+                        # Generic field rendering with placeholder text
+                        final_x = pos_x + pdf_x_offset
+                        final_y = pos_y + pdf_y_offset
+                        placeholder_text = f"[{field_name.replace('_', ' ').title()}]"
+                        can.drawString(final_x, final_y, placeholder_text)
                 
-                else:
-                    # Generic field rendering with placeholder text
-                    final_x = pos_x + pdf_x_offset
-                    final_y = pos_y + pdf_y_offset
-                    placeholder_text = f"[{field_name.replace('_', ' ').title()}]"
-                    can.drawString(final_x, final_y, placeholder_text)
+                except Exception as field_error:
+                    print(f"Error processing field {field_name}: {str(field_error)}")
+                    raise field_error
             
             can.save()
             packet.seek(0)
             
-            # Create overlay page and merge with template page
-            overlay_page = PdfReader(packet).pages[0]
+            # Get template page first
             template_page = template.pages[page_num - 1]  # 0-indexed
-            template_page.merge_page(overlay_page)
+            
+            # Create overlay page and merge with template page only if there are fields
+            if fields_on_page:
+                overlay_page = PdfReader(packet).pages[0]
+                template_page.merge_page(overlay_page)
+            
             writer.add_page(template_page)
         
-        # Save test PDF
-        out_dir = os.path.join(os.path.dirname(__file__), "output")
-        os.makedirs(out_dir, exist_ok=True)
+        # Create in-memory PDF buffer for direct response
+        buffer = io.BytesIO()
+        writer.write(buffer)
+        pdf_data = buffer.getvalue()
+        buffer.close()
+        
+        # Generate timestamp for filename
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        test_pdf_path = os.path.join(out_dir, f"offset_test_{timestamp}.pdf")
         
-        with open(test_pdf_path, "wb") as f:
-            writer.write(f)
+        # Create response with proper headers for reliable download (no server save)
+        response = make_response(pdf_data)
+        response.headers['Content-Type'] = 'application/pdf'
+        response.headers['Content-Disposition'] = f'attachment; filename="offset_test_{timestamp}.pdf"'
+        response.headers['Content-Length'] = len(pdf_data)
+        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
         
-        return send_file(test_pdf_path, as_attachment=True, download_name=f"offset_test_{timestamp}.pdf")
+        return response
         
     except Exception as e:
         print(f"Error generating test PDF: {str(e)}")

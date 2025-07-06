@@ -390,8 +390,8 @@ def build_2290_xml(data: dict) -> str:
         if data.get("preparer_self_employed", True):  # Default to True if not specified
             ET.SubElement(preparer, "SelfEmployedInd").text = "X"
         
-        # Preparer phone number
-        preparer_phone = data.get("preparer_phone", "").replace("-", "").replace("(", "").replace(")", "").replace(" ", "")
+        # Use preparer firm phone number for preparer phone (IRS allows this)
+        preparer_phone = data.get("preparer_firm_phone", "").replace("-", "").replace("(", "").replace(")", "").replace(" ", "")
         if preparer_phone:
             ET.SubElement(preparer, "PhoneNum").text = preparer_phone
         

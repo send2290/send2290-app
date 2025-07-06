@@ -1,5 +1,5 @@
 "use client";
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { auth } from '../lib/firebase';
 import LoginModal from './LoginModal';
 import ReCaptchaComponent, { ReCaptchaRef } from './components/ReCaptcha';
@@ -20,23 +20,14 @@ import { weightCategories } from './constants/formData';
 export { weightCategories };
 
 export default function Form2290() {
-  // Set up API base URL
+  // Debug the API base URL
   const isBrowser = typeof window !== 'undefined';
   const defaultApi = isBrowser
     ? `${window.location.protocol}//${window.location.hostname}:5000`
     : '';
   const API_BASE = process.env.NEXT_PUBLIC_API_URL || defaultApi;
   
-  // State for localhost detection to avoid hydration issues
-  const [isLocalhost, setIsLocalhost] = useState(false);
-  
-  // Check if we're on localhost after component mounts
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const hostname = window.location.hostname;
-      setIsLocalhost(hostname === 'localhost' || hostname === '127.0.0.1');
-    }
-  }, []);
+  console.log("🔗 API_BASE:", API_BASE);
 
   const todayStr = new Date().toISOString().split('T')[0];
 
@@ -266,7 +257,7 @@ export default function Form2290() {
         {/* CAPTCHA Section */}
         <h2 style={{ marginTop: 20 }}>Security Verification</h2>
         <div style={{ marginTop: 12 }}>
-          {process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY && !isLocalhost ? (
+          {process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY ? (
             <>
               <ReCaptchaComponent
                 ref={captchaRef}
@@ -300,14 +291,14 @@ export default function Form2290() {
             </>
           ) : (
             <div style={{ 
-              color: '#2e7d32', 
+              color: '#d32f2f', 
               padding: '12px', 
-              backgroundColor: '#e8f5e8', 
-              border: '1px solid #2e7d32', 
+              backgroundColor: '#ffeaea', 
+              border: '1px solid #d32f2f', 
               borderRadius: '4px',
               fontSize: '0.9rem'
             }}>
-              ℹ️ reCAPTCHA is disabled for localhost development. In production, set NEXT_PUBLIC_RECAPTCHA_SITE_KEY.
+              ⚠️ CAPTCHA is not configured. Please set NEXT_PUBLIC_RECAPTCHA_SITE_KEY in your environment variables.
             </div>
           )}
         </div>
