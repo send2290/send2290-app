@@ -1,14 +1,4 @@
 {
-  "account_type": {
-    "font": "Helvetica",
-    "pagePositions": {},
-    "pages": [],
-    "pdf_x_offset": 0,
-    "pdf_y_offset": 54,
-    "size": 9,
-    "x": 6,
-    "y": 259
-  },
   "address": {
     "font": "Helvetica",
     "pagePositions": {},
@@ -21,26 +11,6 @@
     "size": 9,
     "x": 101,
     "y": 592
-  },
-  "address_line2": {
-    "font": "Helvetica",
-    "pagePositions": {},
-    "pages": [],
-    "pdf_x_offset": 0,
-    "pdf_y_offset": 54,
-    "size": 9,
-    "x": 241,
-    "y": 590
-  },
-  "amended_month": {
-    "font": "Helvetica",
-    "pagePositions": {},
-    "pages": [],
-    "pdf_x_offset": 0,
-    "pdf_y_offset": 54,
-    "size": 9,
-    "x": 150,
-    "y": 491
   },
   "amount_a": {
     "font": "Helvetica",
@@ -417,56 +387,6 @@
     "x": 102,
     "y": 624
   },
-  "business_name_line2": {
-    "font": "Helvetica",
-    "pagePositions": {},
-    "pages": [],
-    "pdf_x_offset": 0,
-    "pdf_y_offset": 54,
-    "size": 10,
-    "x": 211,
-    "y": 631
-  },
-  "card_cvv": {
-    "font": "Helvetica",
-    "pagePositions": {},
-    "pages": [],
-    "pdf_x_offset": 0,
-    "pdf_y_offset": 54,
-    "size": 9,
-    "x": 450,
-    "y": 40
-  },
-  "card_exp": {
-    "font": "Helvetica",
-    "pagePositions": {},
-    "pages": [],
-    "pdf_x_offset": 0,
-    "pdf_y_offset": 54,
-    "size": 9,
-    "x": 400,
-    "y": 40
-  },
-  "card_holder": {
-    "font": "Helvetica",
-    "pagePositions": {},
-    "pages": [],
-    "pdf_x_offset": 0,
-    "pdf_y_offset": 54,
-    "size": 9,
-    "x": 100,
-    "y": 40
-  },
-  "card_number": {
-    "font": "Helvetica",
-    "pagePositions": {},
-    "pages": [],
-    "pdf_x_offset": 0,
-    "pdf_y_offset": 54,
-    "size": 9,
-    "x": 250,
-    "y": 40
-  },
   "checkbox_address_change": {
     "font": "Helvetica-Bold",
     "pagePositions": {},
@@ -547,15 +467,8 @@
   },
   "checkbox_has_disposals": {
     "font": "Helvetica-Bold",
-    "pagePositions": {
-      "1": {
-        "x": 6,
-        "y": 237
-      }
-    },
-    "pages": [
-      1
-    ],
+    "pagePositions": {},
+    "pages": [],
     "pdf_x_offset": 0,
     "pdf_y_offset": 54,
     "size": 10,
@@ -629,15 +542,8 @@
   },
   "checkbox_preparer_taxpayer": {
     "font": "Helvetica-Bold",
-    "pagePositions": {
-      "1": {
-        "x": 8,
-        "y": 173
-      }
-    },
-    "pages": [
-      1
-    ],
+    "pagePositions": {},
+    "pages": [],
     "pdf_x_offset": 0,
     "pdf_y_offset": 54,
     "size": 9,
@@ -676,16 +582,6 @@
     "size": 10,
     "x": 325,
     "y": 523
-  },
-  "city": {
-    "font": "Helvetica",
-    "pagePositions": {},
-    "pages": [],
-    "pdf_x_offset": 0,
-    "pdf_y_offset": 54,
-    "size": 9,
-    "x": 213,
-    "y": 581
   },
   "city_state_zip": {
     "font": "Helvetica",
@@ -1525,52 +1421,45 @@
     "x": 505,
     "y": 119
   },
-  "eftps_account": {
-    "font": "Helvetica",
-    "pagePositions": {},
-    "pages": [],
-    "pdf_x_offset": 0,
-    "pdf_y_offset": 54,
-    "size": 9,
-    "x": 250,
-    "y": 80
-  },
-  "eftps_routing": {
-    "font": "Helvetica",
-    "pagePositions": {},
-    "pages": [],
-    "pdf_x_offset": 0,
-    "pdf_y_offset": 54,
-    "size": 9,
-    "x": 100,
-    "y": 80
-  },
   "ein_digits": {
     "font": "Helvetica",
     "pagePositions": {
       "1": {
         "x_positions": [
-          354,
-          369,
-          389,
-          404,
-          419,
-          434,
-          449,
-          464,
-          479
+          422,
+          437,
+          457,
+          472,
+          487,
+          502,
+          517,
+          532,
+          547
         ],
         "y": 621
+      },
+      "3": {
+        "x_positions": [
+          422,
+          437,
+          457,
+          472,
+          487,
+          502,
+          517,
+          532,
+          547
+        ]
       }
     },
     "pages": [
       1,
       3
     ],
-    "pdf_x_offset": 70,
+    "pdf_x_offset": 0,
     "pdf_y_offset": 54,
     "size": 10,
-    "x": 418,
+    "x": 486,
     "x_positions": [
       355.1111111111111,
       370.1111111111111,
@@ -1583,16 +1472,6 @@
       480.1111111111111
     ],
     "y": 621
-  },
-  "email": {
-    "font": "Helvetica",
-    "pagePositions": {},
-    "pages": [],
-    "pdf_x_offset": 0,
-    "pdf_y_offset": 54,
-    "size": 9,
-    "x": 100,
-    "y": 20
   },
   "line2_tax": {
     "font": "Helvetica",
@@ -1757,16 +1636,6 @@
     "x": 138,
     "y": 74
   },
-  "officer_ssn": {
-    "font": "Helvetica",
-    "pagePositions": {},
-    "pages": [],
-    "pdf_x_offset": 0,
-    "pdf_y_offset": 54,
-    "size": 10,
-    "x": 274,
-    "y": 234
-  },
   "officer_title": {
     "font": "Helvetica",
     "pagePositions": {
@@ -1783,16 +1652,6 @@
     "size": 10,
     "x": 217,
     "y": 74
-  },
-  "payment_date": {
-    "font": "Helvetica",
-    "pagePositions": {},
-    "pages": [],
-    "pdf_x_offset": 0,
-    "pdf_y_offset": 54,
-    "size": 9,
-    "x": 450,
-    "y": 80
   },
   "preparer_firm_address": {
     "font": "Helvetica",
@@ -1976,26 +1835,6 @@
     "size": 10,
     "x": 401,
     "y": 73
-  },
-  "special_conditions": {
-    "font": "Helvetica",
-    "pagePositions": {},
-    "pages": [],
-    "pdf_x_offset": 0,
-    "pdf_y_offset": 54,
-    "size": 8,
-    "x": 8,
-    "y": 178
-  },
-  "state": {
-    "font": "Helvetica",
-    "pagePositions": {},
-    "pages": [],
-    "pdf_x_offset": 0,
-    "pdf_y_offset": 54,
-    "size": 9,
-    "x": 350,
-    "y": 564
   },
   "tax_lines": {
     "line2_tax": {
@@ -2774,16 +2613,6 @@
     "x": 261,
     "y": 228
   },
-  "tax_year": {
-    "font": "Helvetica-Bold",
-    "pagePositions": {},
-    "pages": [],
-    "pdf_x_offset": 0,
-    "pdf_y_offset": 0,
-    "size": 11,
-    "x": 371,
-    "y": 725
-  },
   "taxpayer_phone": {
     "font": "Helvetica",
     "pagePositions": {
@@ -2800,36 +2629,6 @@
     "size": 9,
     "x": 458,
     "y": 46
-  },
-  "taxpayer_pin": {
-    "font": "Helvetica",
-    "pagePositions": {},
-    "pages": [],
-    "pdf_x_offset": 0,
-    "pdf_y_offset": 54,
-    "size": 10,
-    "x": 347,
-    "y": 328
-  },
-  "total_logging_vehicles": {
-    "font": "Helvetica-Bold",
-    "pagePositions": {},
-    "pages": [],
-    "pdf_x_offset": 0,
-    "pdf_y_offset": 0,
-    "size": 10,
-    "x": 393,
-    "y": 123
-  },
-  "total_regular_vehicles": {
-    "font": "Helvetica-Bold",
-    "pagePositions": {},
-    "pages": [],
-    "pdf_x_offset": 0,
-    "pdf_y_offset": 0,
-    "size": 10,
-    "x": 366,
-    "y": 158
   },
   "total_reported_vehicles": {
     "font": "Helvetica",
@@ -4672,25 +4471,5 @@
     "size": 9,
     "x": 534,
     "y": 364
-  },
-  "vin_correction_explanation": {
-    "font": "Helvetica",
-    "pagePositions": {},
-    "pages": [],
-    "pdf_x_offset": 0,
-    "pdf_y_offset": 54,
-    "size": 8,
-    "x": 167,
-    "y": 499
-  },
-  "zip": {
-    "font": "Helvetica",
-    "pagePositions": {},
-    "pages": [],
-    "pdf_x_offset": 0,
-    "pdf_y_offset": 54,
-    "size": 9,
-    "x": 420,
-    "y": 564
   }
 }
