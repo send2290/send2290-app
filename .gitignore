@@ -139,6 +139,10 @@ INTEGRATION_COMPLETE.md
 # HTML tools and utilities
 frontend/position-tuner.html
 
+# Legacy/backup files for reference
+frontend/app/page_legacy.tsx
+*_legacy.*
+
 # Test scenarios directory
 scenarios/
 
