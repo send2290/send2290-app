@@ -9,6 +9,10 @@ import os
 from collections import defaultdict
 import re
 
+# Load environment variables
+from dotenv import load_dotenv
+load_dotenv()
+
 def parse_month_to_yyyymm(month_str: str) -> str:
     """
     Convert month string to YYYYMM format.
@@ -214,6 +218,42 @@ def build_supporting_statements(data: dict, return_data: ET.Element) -> None:
             ET.SubElement(suspension_detail, "VIN").text = vehicle.get("vin", "")
             ET.SubElement(suspension_detail, "BusinessName").text = data.get("business_name", "")
             ET.SubElement(suspension_detail, "Dt").text = datetime.now().strftime("%Y-%m-%d")
+    
+    # 8. General Dependency Medium (for additional attachments)
+    # This handles the GeneralDependencyMedium.xsd schema for custom attachments
+    if data.get("additional_attachments"):
+        for attachment in data.get("additional_attachments", []):
+            general_dep = ET.SubElement(return_data, "GeneralDependencyMedium")
+            
+            # Business or person name
+            if attachment.get("business_name"):
+                ET.SubElement(general_dep, "BusinessName").text = attachment.get("business_name")
+            elif attachment.get("person_name"):
+                ET.SubElement(general_dep, "PersonNm").text = attachment.get("person_name")
+            
+            # Tax ID
+            if attachment.get("ein"):
+                ET.SubElement(general_dep, "EIN").text = attachment.get("ein")
+            elif attachment.get("ssn"):
+                ET.SubElement(general_dep, "SSN").text = attachment.get("ssn")
+            elif attachment.get("missing_ein_reason"):
+                ET.SubElement(general_dep, "MissingEINReasonCd").text = attachment.get("missing_ein_reason")
+            
+            # Form line reference
+            if attachment.get("form_line_reference"):
+                ET.SubElement(general_dep, "FormLineOrInstructionRefTxt").text = attachment.get("form_line_reference")
+            
+            # Regulations reference
+            if attachment.get("regulation_reference"):
+                ET.SubElement(general_dep, "RegulationReferenceTxt").text = attachment.get("regulation_reference")
+            
+            # Description
+            if attachment.get("description"):
+                ET.SubElement(general_dep, "Desc").text = attachment.get("description")
+            
+            # Detailed attachment information
+            if attachment.get("attachment_information"):
+                ET.SubElement(general_dep, "AttachmentInformationMedDesc").text = attachment.get("attachment_information")
 
 
 def build_enhanced_payment_record(data: dict, return_data: ET.Element) -> None:
@@ -367,13 +407,15 @@ def build_2290_xml(data: dict) -> str:
         first_used_formatted = f"{data.get('tax_year', '2025')}-07"
     ET.SubElement(return_header, "FirstUsedDt").text = first_used_formatted
     
-    # Software identification (required) - Your actual Software ID
-    ET.SubElement(return_header, "SoftwareId").text = "38720501"
+    # Software identification (required) - From environment variable
+    software_id = os.getenv('IRS_SOFTWARE_ID', '38720501')  # Default fallback
+    ET.SubElement(return_header, "SoftwareId").text = software_id
     ET.SubElement(return_header, "MultSoftwarePackagesUsedInd").text = "false"
     
-    # Originator group (required for e-file) - Your actual EFIN
+    # Originator group (required for e-file) - From environment variable
     originator = ET.SubElement(return_header, "OriginatorGrp")
-    ET.SubElement(originator, "EFIN").text = "387205"  # Your EFIN
+    efin = os.getenv('IRS_EFIN', '387205')  # Default fallback
+    ET.SubElement(originator, "EFIN").text = efin
     ET.SubElement(originator, "OriginatorTypeCd").text = "OnlineFilerSelfSelect"
     
     # Return type
@@ -449,20 +491,27 @@ def build_2290_xml(data: dict) -> str:
         if data.get("date_prepared"):
             ET.SubElement(preparer, "PreparationDt").text = data.get("date_prepared", "")
     
-    # Preparer firm - Always include your business as the software developer
+    # Preparer firm - Software developer information from environment
     firm = ET.SubElement(return_header, "PreparerFirmGrp")
-    ET.SubElement(firm, "PreparerFirmEIN").text = "334623152"  # Your EIN: 33-4623152
-    ET.SubElement(firm, "PreparerFirmName").text = "Majd Consulting, PLLC"
+    developer_ein = os.getenv('DEVELOPER_EIN', '334623152')  # Default fallback
+    ET.SubElement(firm, "PreparerFirmEIN").text = developer_ein
+    developer_name = os.getenv('DEVELOPER_NAME', 'Majd Consulting, PLLC')
+    ET.SubElement(firm, "PreparerFirmName").text = developer_name
     
-    # Your business address
+    # Developer business address from environment
     firm_address = ET.SubElement(firm, "PreparerUSAddress")
-    ET.SubElement(firm_address, "AddressLine1Txt").text = "18673 Audette St"
-    ET.SubElement(firm_address, "CityNm").text = "Dearborn"
-    ET.SubElement(firm_address, "StateAbbreviationCd").text = "MI"
-    ET.SubElement(firm_address, "ZIPCd").text = "48124"
+    developer_address = os.getenv('DEVELOPER_ADDRESS', '18673 Audette St')
+    developer_city = os.getenv('DEVELOPER_CITY', 'Dearborn')
+    developer_state = os.getenv('DEVELOPER_STATE', 'MI')
+    developer_zip = os.getenv('DEVELOPER_ZIP', '48124')
     
-    # Additional preparer firm from user input (if different from your business)
-    if data.get("preparer_firm_name") and data.get("preparer_firm_name") != "Majd Consulting, PLLC":
+    ET.SubElement(firm_address, "AddressLine1Txt").text = developer_address
+    ET.SubElement(firm_address, "CityNm").text = developer_city
+    ET.SubElement(firm_address, "StateAbbreviationCd").text = developer_state
+    ET.SubElement(firm_address, "ZIPCd").text = developer_zip
+    
+    # Additional preparer firm from user input (if different from developer)
+    if data.get("preparer_firm_name") and data.get("preparer_firm_name") != developer_name:
         additional_firm = ET.SubElement(return_header, "PreparerFirmGrp")
         firm_ein = data.get("preparer_firm_ein", "").replace("-", "").zfill(9)
         ET.SubElement(additional_firm, "PreparerFirmEIN").text = firm_ein

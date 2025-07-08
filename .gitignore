@@ -17,6 +17,8 @@ __pycache__/
 backend/output/
 backend/*.xml
 backend/form2290.xml
+backend/test_form_2290.xml
+backend/submission_result_*.json
 
 # Flask instance files, if any
 instance/
@@ -118,6 +120,26 @@ backend/.env.test.local
 backend/.env.production.local
 backend/firebase-service-account.json
 
+# IRS e-file certificates and keys (CRITICAL - NEVER COMMIT)
+backend/certificates/
+backend/certificates/irs_cert.pem
+backend/certificates/irs_key.key
+backend/certificates/send2290_cert.pem
+backend/certificates/send2290.key
+backend/certificates/*.pem
+backend/certificates/*.key
+backend/certificates/*.p12
+backend/certificates/*.pfx
+
+# IRS integration test files and configuration
+backend/test_irs.py
+backend/irs_routes.py
+backend/test_irs_submission.py
+backend/irs_config.py
+
+# IRS integration directory (contains sensitive config)
+backend/irs_integration/
+
 # Any other JSON keyfiles
 **/firebase-service-account*.json
 
@@ -161,6 +183,9 @@ scenarios/
 # Production deployment guides (contain infrastructure details)
 backend/Audit/PRODUCTION_DEPLOYMENT_GUIDE.md
 backend/Audit/PRODUCTION_IMPLEMENTATION_SUMMARY.md
+
+# Security setup documentation (contains sensitive configuration details)
+SECURITY_SETUP_COMPLETE.md
 
 # Main application files (contain business logic and UI design)
 
