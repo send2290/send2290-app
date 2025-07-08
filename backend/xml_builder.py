@@ -48,7 +48,7 @@ def parse_month_to_yyyymm(month_str: str) -> str:
     print(f"⚠️ Warning: Could not parse month '{month_str}', using July 2025")
     return "202507"
 
-# Static tax tables (Table I and Logging Table II)
+# Static tax tables - Annual rates (July only)
 WEIGHT_RATES = {
     "A": 100.00, "B": 122.00, "C": 144.00, "D": 166.00, "E": 188.00, "F": 210.00,
     "G": 232.00, "H": 254.00, "I": 276.00, "J": 298.00, "K": 320.00, "L": 342.00,
@@ -60,6 +60,61 @@ LOGGING_RATES = {
     "G": 174.0, "H": 190.5, "I": 207.0, "J": 223.5, "K": 240.0, "L": 256.5,
     "M": 273.0, "N": 289.5, "O": 306.0, "P": 322.5, "Q": 339.0, "R": 355.5,
     "S": 372.0, "T": 388.5, "U": 405.0, "V": 412.5, "W": 0.0
+}
+
+# IRS Partial-period tax tables (from official IRS Form 2290 instructions)
+# Regular vehicles (non-logging) - Table I
+PARTIAL_PERIOD_TAX_REGULAR = {
+    "A": {8: 91.67, 9: 83.33, 10: 75.00, 11: 66.67, 12: 58.33, 1: 50.00, 2: 41.67, 3: 33.33, 4: 25.00, 5: 16.67, 6: 8.33},
+    "B": {8: 111.83, 9: 101.67, 10: 91.50, 11: 81.33, 12: 71.17, 1: 61.00, 2: 50.83, 3: 40.67, 4: 30.50, 5: 20.33, 6: 10.17},
+    "C": {8: 132.00, 9: 120.00, 10: 108.00, 11: 96.00, 12: 84.00, 1: 72.00, 2: 60.00, 3: 48.00, 4: 36.00, 5: 24.00, 6: 12.00},
+    "D": {8: 152.17, 9: 138.33, 10: 124.50, 11: 110.67, 12: 96.83, 1: 83.00, 2: 69.17, 3: 55.33, 4: 41.50, 5: 27.67, 6: 13.83},
+    "E": {8: 172.33, 9: 156.67, 10: 141.00, 11: 125.33, 12: 109.67, 1: 94.00, 2: 78.33, 3: 62.67, 4: 47.00, 5: 31.33, 6: 15.67},
+    "F": {8: 192.50, 9: 175.00, 10: 157.50, 11: 140.00, 12: 122.50, 1: 105.00, 2: 87.50, 3: 70.00, 4: 52.50, 5: 35.00, 6: 17.50},
+    "G": {8: 212.67, 9: 193.33, 10: 174.00, 11: 154.67, 12: 135.33, 1: 116.00, 2: 96.67, 3: 77.33, 4: 58.00, 5: 38.67, 6: 19.33},
+    "H": {8: 232.83, 9: 211.67, 10: 190.50, 11: 169.33, 12: 148.17, 1: 127.00, 2: 105.83, 3: 84.67, 4: 63.50, 5: 42.33, 6: 21.17},
+    "I": {8: 253.00, 9: 230.00, 10: 207.00, 11: 184.00, 12: 161.00, 1: 138.00, 2: 115.00, 3: 92.00, 4: 69.00, 5: 46.00, 6: 23.00},
+    "J": {8: 273.17, 9: 248.33, 10: 223.50, 11: 198.67, 12: 173.83, 1: 149.00, 2: 124.17, 3: 99.33, 4: 74.50, 5: 49.67, 6: 24.83},
+    "K": {8: 293.33, 9: 266.67, 10: 240.00, 11: 213.33, 12: 186.67, 1: 160.00, 2: 133.33, 3: 106.67, 4: 80.00, 5: 53.33, 6: 26.67},
+    "L": {8: 313.50, 9: 285.00, 10: 256.50, 11: 228.00, 12: 199.50, 1: 171.00, 2: 142.50, 3: 114.00, 4: 85.50, 5: 57.00, 6: 28.50},
+    "M": {8: 333.67, 9: 303.33, 10: 273.00, 11: 242.67, 12: 212.33, 1: 182.00, 2: 151.67, 3: 121.33, 4: 91.00, 5: 60.67, 6: 30.33},
+    "N": {8: 353.83, 9: 321.67, 10: 289.50, 11: 257.33, 12: 225.17, 1: 193.00, 2: 160.83, 3: 128.67, 4: 96.50, 5: 64.33, 6: 32.17},
+    "O": {8: 374.00, 9: 340.00, 10: 306.00, 11: 272.00, 12: 238.00, 1: 204.00, 2: 170.00, 3: 136.00, 4: 102.00, 5: 68.00, 6: 34.00},
+    "P": {8: 394.17, 9: 358.33, 10: 322.50, 11: 286.67, 12: 250.83, 1: 215.00, 2: 179.17, 3: 143.33, 4: 107.50, 5: 71.67, 6: 35.83},
+    "Q": {8: 414.33, 9: 376.67, 10: 339.00, 11: 301.33, 12: 263.67, 1: 226.00, 2: 188.33, 3: 150.67, 4: 113.00, 5: 75.33, 6: 37.67},
+    "R": {8: 434.50, 9: 395.00, 10: 355.50, 11: 316.00, 12: 276.50, 1: 237.00, 2: 197.50, 3: 158.00, 4: 118.50, 5: 79.00, 6: 39.50},
+    "S": {8: 454.67, 9: 413.33, 10: 372.00, 11: 330.67, 12: 289.33, 1: 248.00, 2: 206.67, 3: 165.33, 4: 124.00, 5: 82.67, 6: 41.33},
+    "T": {8: 474.83, 9: 431.67, 10: 388.50, 11: 345.33, 12: 302.17, 1: 259.00, 2: 215.83, 3: 172.67, 4: 129.50, 5: 86.33, 6: 43.17},
+    "U": {8: 495.00, 9: 450.00, 10: 405.00, 11: 360.00, 12: 315.00, 1: 270.00, 2: 225.00, 3: 180.00, 4: 135.00, 5: 90.00, 6: 45.00},
+    "V": {8: 504.17, 9: 458.33, 10: 412.50, 11: 366.67, 12: 320.83, 1: 275.00, 2: 229.17, 3: 183.33, 4: 137.50, 5: 91.67, 6: 45.83},
+    "W": {8: 0.0, 9: 0.0, 10: 0.0, 11: 0.0, 12: 0.0, 1: 0.0, 2: 0.0, 3: 0.0, 4: 0.0, 5: 0.0, 6: 0.0}
+}
+
+# Logging vehicles (reduced rates) - Table II
+PARTIAL_PERIOD_TAX_LOGGING = {
+    "A": {8: 68.75, 9: 62.49, 10: 56.25, 11: 50.00, 12: 43.74, 1: 37.50, 2: 31.25, 3: 24.99, 4: 18.75, 5: 12.50, 6: 6.24},
+    "B": {8: 83.87, 9: 76.25, 10: 68.62, 11: 60.99, 12: 53.37, 1: 45.75, 2: 38.12, 3: 30.50, 4: 22.87, 5: 15.24, 6: 7.62},
+    "C": {8: 99.00, 9: 90.00, 10: 81.00, 11: 72.00, 12: 63.00, 1: 54.00, 2: 45.00, 3: 36.00, 4: 27.00, 5: 18.00, 6: 9.00},
+    "D": {8: 114.12, 9: 103.74, 10: 93.37, 11: 83.00, 12: 72.62, 1: 62.25, 2: 51.87, 3: 41.49, 4: 31.12, 5: 20.75, 6: 10.37},
+    "E": {8: 129.24, 9: 117.50, 10: 105.75, 11: 93.99, 12: 82.25, 1: 70.50, 2: 58.74, 3: 47.00, 4: 35.25, 5: 23.49, 6: 11.75},
+    "F": {8: 144.37, 9: 131.25, 10: 118.12, 11: 105.00, 12: 91.87, 1: 78.75, 2: 65.62, 3: 52.50, 4: 39.37, 5: 26.25, 6: 13.12},
+    "G": {8: 159.50, 9: 144.99, 10: 130.50, 11: 116.00, 12: 101.49, 1: 87.00, 2: 72.50, 3: 57.99, 4: 43.50, 5: 29.00, 6: 14.49},
+    "H": {8: 174.62, 9: 158.75, 10: 142.87, 11: 126.99, 12: 111.12, 1: 95.25, 2: 79.37, 3: 63.50, 4: 47.62, 5: 31.74, 6: 15.87},
+    "I": {8: 189.75, 9: 172.50, 10: 155.25, 11: 138.00, 12: 120.75, 1: 103.50, 2: 86.25, 3: 69.00, 4: 51.75, 5: 34.50, 6: 17.25},
+    "J": {8: 204.87, 9: 186.24, 10: 167.62, 11: 149.00, 12: 130.37, 1: 111.75, 2: 93.12, 3: 74.49, 4: 55.87, 5: 37.25, 6: 18.62},
+    "K": {8: 219.99, 9: 200.00, 10: 180.00, 11: 159.99, 12: 140.00, 1: 120.00, 2: 99.99, 3: 80.00, 4: 60.00, 5: 39.99, 6: 20.00},
+    "L": {8: 235.12, 9: 213.75, 10: 192.37, 11: 171.00, 12: 149.62, 1: 128.25, 2: 106.87, 3: 85.50, 4: 64.12, 5: 42.75, 6: 21.37},
+    "M": {8: 250.25, 9: 227.49, 10: 204.75, 11: 182.00, 12: 159.24, 1: 136.50, 2: 113.75, 3: 90.99, 4: 68.25, 5: 45.50, 6: 22.74},
+    "N": {8: 265.37, 9: 241.25, 10: 217.12, 11: 192.99, 12: 168.87, 1: 144.75, 2: 120.62, 3: 96.50, 4: 72.37, 5: 48.24, 6: 24.12},
+    "O": {8: 280.50, 9: 255.00, 10: 229.50, 11: 204.00, 12: 178.50, 1: 153.00, 2: 127.50, 3: 102.00, 4: 76.50, 5: 51.00, 6: 25.50},
+    "P": {8: 295.62, 9: 268.74, 10: 241.87, 11: 215.00, 12: 188.12, 1: 161.25, 2: 134.37, 3: 107.49, 4: 80.62, 5: 53.75, 6: 26.87},
+    "Q": {8: 310.74, 9: 282.50, 10: 254.25, 11: 225.99, 12: 197.75, 1: 169.50, 2: 141.24, 3: 113.00, 4: 84.75, 5: 56.49, 6: 28.25},
+    "R": {8: 325.87, 9: 296.25, 10: 266.62, 11: 237.00, 12: 207.37, 1: 177.75, 2: 148.12, 3: 118.50, 4: 88.87, 5: 59.25, 6: 29.62},
+    "S": {8: 341.00, 9: 309.99, 10: 279.00, 11: 248.00, 12: 216.99, 1: 186.00, 2: 155.00, 3: 123.99, 4: 93.00, 5: 62.00, 6: 30.99},
+    "T": {8: 356.12, 9: 323.75, 10: 291.37, 11: 258.99, 12: 226.62, 1: 194.25, 2: 161.87, 3: 129.50, 4: 97.12, 5: 64.74, 6: 32.37},
+    "U": {8: 371.25, 9: 337.50, 10: 303.75, 11: 270.00, 12: 236.25, 1: 202.50, 2: 168.75, 3: 135.00, 4: 101.25, 5: 67.50, 6: 33.75},
+    "V": {8: 378.12, 9: 343.74, 10: 309.37, 11: 275.00, 12: 240.62, 1: 206.25, 2: 171.87, 3: 137.49, 4: 103.12, 5: 68.75, 6: 34.37},
+    "W": {8: 0.0, 9: 0.0, 10: 0.0, 11: 0.0, 12: 0.0, 1: 0.0, 2: 0.0, 3: 0.0, 4: 0.0, 5: 0.0, 6: 0.0}
 }
 
 def build_supporting_statements(data: dict, return_data: ET.Element) -> None:
@@ -172,28 +227,14 @@ def build_enhanced_payment_record(data: dict, return_data: ET.Element) -> None:
         
         # Calculate payment amount (total tax minus credits)
         vehicles = data.get("vehicles", [])
+        current_month = data.get("current_month")  # Should be passed when generating by month
         total_tax = 0.0
         for vehicle in vehicles:
-            if vehicle.get("is_suspended") or vehicle.get("is_agricultural"):
+            # Only include vehicles for this specific month if generating separate files
+            if current_month and vehicle.get("used_month") != current_month:
                 continue
-            
-            cat = vehicle.get("category", "")
-            used = vehicle.get("used_month", "")
-            logging = bool(vehicle.get("is_logging"))
-            
-            if len(used) >= 6:
-                mon = int(used[-2:]) if used[-2:].isdigit() else 7
-            else:
-                mon = 7
-            
-            months_left = 12 if mon >= 7 else (13 - mon if 1 <= mon <= 12 else 0)
-            
-            if logging:
-                rate = LOGGING_RATES.get(cat, 0.0)
-            else:
-                rate = WEIGHT_RATES.get(cat, 0.0)
-            
-            total_tax += round(rate * (months_left / 12), 2)
+                
+            total_tax += calculate_vehicle_tax(vehicle)
         
         credits = float(data.get("tax_credits", 0.0))
         payment_amount = max(0.0, total_tax - credits)
@@ -259,32 +300,42 @@ def validate_business_rules(data: dict) -> list:
     
     return errors
 
+def calculate_vehicle_tax(vehicle: dict) -> float:
+    """Calculate tax for a single vehicle using IRS lookup tables"""
+    if vehicle.get("is_suspended") or vehicle.get("is_agricultural"):
+        return 0.0
+    
+    cat = vehicle.get("category", "")
+    used = vehicle.get("used_month", "")
+    logging = bool(vehicle.get("is_logging"))
+    
+    if not cat or cat not in WEIGHT_RATES:
+        return 0.0
+    
+    if len(used) >= 6:
+        mon = int(used[-2:]) if used[-2:].isdigit() else 7
+    else:
+        mon = 7
+    
+    # July (month 7) = annual tax
+    if mon == 7:
+        if logging:
+            return LOGGING_RATES.get(cat, 0.0)
+        else:
+            return WEIGHT_RATES.get(cat, 0.0)
+    else:
+        # All other months = partial-period tax using lookup tables
+        if logging:
+            return PARTIAL_PERIOD_TAX_LOGGING.get(cat, {}).get(mon, 0.0)
+        else:
+            return PARTIAL_PERIOD_TAX_REGULAR.get(cat, {}).get(mon, 0.0)
+
 def calculate_total_tax(vehicles: list) -> float:
-    """Calculate total tax for vehicles (helper function)"""
+    """Calculate total tax for vehicles using IRS lookup tables"""
     total = 0.0
     for vehicle in vehicles:
-        if vehicle.get("is_suspended") or vehicle.get("is_agricultural"):
-            continue
-        
-        cat = vehicle.get("category", "")
-        used = vehicle.get("used_month", "")
-        logging = bool(vehicle.get("is_logging"))
-        
-        if len(used) >= 6:
-            mon = int(used[-2:]) if used[-2:].isdigit() else 7
-        else:
-            mon = 7
-        
-        months_left = 12 if mon >= 7 else (13 - mon if 1 <= mon <= 12 else 0)
-        
-        if logging:
-            rate = LOGGING_RATES.get(cat, 0.0)
-        else:
-            rate = WEIGHT_RATES.get(cat, 0.0)
-        
-        total += round(rate * (months_left / 12), 2)
-    
-    return total
+        total += calculate_vehicle_tax(vehicle)
+    return round(total, 2)
 
 def build_2290_xml(data: dict) -> str:
     """Build IRS-compliant Form 2290 XML according to 2025v1.0 schema"""
@@ -483,27 +534,18 @@ def build_2290_xml(data: dict) -> str:
         cat = vehicle.get("category", "").strip()
         used = vehicle.get("used_month", "").strip()
         logging = bool(vehicle.get("is_logging"))
-        suspended = bool(vehicle.get("is_suspended"))
+        suspended = bool(vehicle.get("is_suspended") or vehicle.get("is_agricultural"))
         
         if suspended:
             continue  # Don't include suspended vehicles in tax computation
             
-        # Calculate months from first use
-        if len(used) >= 6:  # YYYYMM format
-            mon = int(used[-2:]) if used[-2:].isdigit() else 7
-        else:
-            mon = 7  # Default to July
-            
-        months_left = 12 if mon >= 7 else (13 - mon if 1 <= mon <= 12 else 0)
+        # Calculate tax using lookup tables
+        tax_amount = calculate_vehicle_tax(vehicle)
         
         if logging:
-            base_rate = LOGGING_RATES.get(cat, 0.0)
-            tax_amount = round(base_rate * (months_left / 12), 2)
             category_data[cat]["logging_count"] += 1
             category_data[cat]["logging_tax"] += tax_amount
         else:
-            base_rate = WEIGHT_RATES.get(cat, 0.0)
-            tax_amount = round(base_rate * (months_left / 12), 2)
             category_data[cat]["non_logging_count"] += 1
             category_data[cat]["non_logging_tax"] += tax_amount
         

@@ -40,6 +40,14 @@ backend/localaudit.log
 backend/Audit/*.log
 backend/Audit/__pycache__/
 
+# Tax sync monitoring logs and reports
+tax_sync_alerts.log
+tax_validation_report.json
+tax_monitor.log
+
+# Guide files (contain personal email addresses and setup instructions)
+Guides/
+
 # =========================
 # Next.js frontend
 # =========================
