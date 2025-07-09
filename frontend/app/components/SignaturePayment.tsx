@@ -66,20 +66,17 @@ export const SignaturePayment: React.FC<SignaturePaymentProps> = ({ formData, ha
             inputMode="numeric"
             value={formData.eftps_routing} 
             onChange={handleChange} 
-            required
           />
           <input 
             name="eftps_account" 
             placeholder="Account Number" 
             value={formData.eftps_account} 
             onChange={handleChange} 
-            required
           />
           <select
             name="account_type"
             value={formData.account_type || ''}
             onChange={handleChange}
-            required
           >
             <option value="">Account Type</option>
             <option value="Checking">Checking</option>
@@ -92,7 +89,6 @@ export const SignaturePayment: React.FC<SignaturePaymentProps> = ({ formData, ha
             value={formData.payment_date || ''}
             onChange={handleChange}
             title="Requested payment date"
-            required
           />
           <input
             name="taxpayer_phone"
@@ -102,7 +98,6 @@ export const SignaturePayment: React.FC<SignaturePaymentProps> = ({ formData, ha
             inputMode="numeric"
             value={formData.taxpayer_phone || ''}
             onChange={handleChange}
-            required
           />
         </div>
       )}

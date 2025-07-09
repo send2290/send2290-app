@@ -1,18 +1,16 @@
 "use client";
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { auth } from '../lib/firebase';
 import LoginModal from './LoginModal';
-import ReCaptchaComponent, { ReCaptchaRef } from './components/ReCaptcha';
 import { useForm2290 } from './hooks/useForm2290';
 import { createFormHandler } from './utils/formHandlers';
-import { createSubmissionHandler } from './utils/submissionHandler';
+import { calculateDisposalCredit } from './utils/formUtils';
 import { BusinessInfo } from './components/BusinessInfo';
 import { ReturnFlags } from './components/ReturnFlags';
 import { OfficerInfo } from './components/OfficerInfo';
 import { PreparerSection } from './components/PreparerSection';
 import { VehicleManagement } from './components/VehicleManagement';
-import { TaxComputationTable } from './components/TaxComputationTable';
-import { SignaturePayment } from './components/SignaturePayment';
 import { AdminSubmissions } from './components/AdminSubmissions';
 import { weightCategories } from './constants/formData';
 
@@ -20,16 +18,18 @@ import { weightCategories } from './constants/formData';
 export { weightCategories };
 
 export default function Form2290() {
+  const router = useRouter();
+  
   // Set up API base URL
   const isBrowser = typeof window !== 'undefined';
   const defaultApi = isBrowser
     ? `${window.location.protocol}//${window.location.hostname}:5000`
     : '';
   const API_BASE = process.env.NEXT_PUBLIC_API_URL || defaultApi;
-  
-  // State for localhost detection to avoid hydration issues
+    // State for localhost detection to avoid hydration issues
   const [isLocalhost, setIsLocalhost] = useState(false);
-  
+  const [isLoadingData, setIsLoadingData] = useState(true);
+
   // Check if we're on localhost after component mounts
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -46,10 +46,6 @@ export default function Form2290() {
     setFormData,
     totalTax,
     totalDisposalCredits,
-    captchaToken,
-    setCaptchaToken,
-    captchaError,
-    setCaptchaError,
     addVehicle,
     removeVehicle,
     categoryData,
@@ -62,44 +58,176 @@ export default function Form2290() {
     suspendedNonLoggingCount,
   } = useForm2290();
 
+  // Load saved form data from localStorage after hook is initialized
+  useEffect(() => {
+    try {
+      const storedData = localStorage.getItem('form2290Data');
+      if (storedData) {
+        const data = JSON.parse(storedData);
+        if (data.formData) {
+          // Recalculate disposal credits for vehicles that have disposal dates but no credits
+          const formDataWithCredits = {
+            ...data.formData,
+            vehicles: data.formData.vehicles.map((vehicle: any) => {
+              if (vehicle.disposal_date && vehicle.disposal_credit === undefined) {
+                const credit = calculateDisposalCredit(vehicle, vehicle.disposal_date);
+                console.log(`Calculated disposal credit for vehicle ${vehicle.vin}: $${credit}`);
+                return {
+                  ...vehicle,
+                  disposal_credit: credit
+                };
+              }
+              return vehicle;
+            })
+          };
+          
+          // Restore the form data
+          setFormData(formDataWithCredits);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading saved form data:', error);
+    } finally {
+      setIsLoadingData(false);
+    }
+  }, [setFormData]);
+
+  // Auto-save form data whenever it changes (but not while loading)
+  useEffect(() => {
+    if (!isLoadingData && formData && (formData.business_name || formData.ein || formData.vehicles.length > 0)) {
+      const dataToSave = {
+        formData,
+        categoryData,
+        grandTotals,
+        totalVINs,
+        totalDisposalCredits,
+        totalTax,
+        taxableVehiclesCount,
+        suspendedLoggingCount,
+        suspendedNonLoggingCount
+      };
+      
+      // Debug: Show what's being saved
+      console.log('Auto-saving data:', {
+        totalDisposalCredits,
+        vehiclesWithDisposal: formData.vehicles.filter(v => v.disposal_date).length,
+        vehicleCredits: formData.vehicles.map(v => ({ vin: v.vin.slice(-4), credit: v.disposal_credit }))
+      });
+      
+      localStorage.setItem('form2290Data', JSON.stringify(dataToSave));
+    }
+  }, [isLoadingData, formData, categoryData, grandTotals, totalVINs, totalDisposalCredits, totalTax, taxableVehiclesCount, suspendedLoggingCount, suspendedNonLoggingCount]);
+
   // Login UI states
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [pendingEmail, setPendingEmail] = useState('');
 
-  // CAPTCHA ref
-  const captchaRef = useRef<ReCaptchaRef>(null);
-
   // Create form handler
   const handleChange = createFormHandler(formData, setFormData, todayStr);
 
-  // CAPTCHA handlers
-  const handleCaptchaChange = (token: string | null) => {
-    setCaptchaToken(token);
-    setCaptchaError('');
+  // Handle proceeding to filing page
+  const handleProceedToFiling = () => {
+    // Comprehensive validation before proceeding to filing
+    const validationErrors: string[] = [];
+    
+    // Business information validation
+    if (!formData.business_name.trim()) {
+      validationErrors.push('Business Name is required');
+    }
+    
+    if (!/^\d{2}-\d{7}$/.test(formData.ein)) {
+      validationErrors.push('EIN must be 9 digits in format XX-XXXXXXX');
+    }
+    
+    if (!formData.address.trim()) {
+      validationErrors.push('Business Address is required');
+    }
+    
+    if (!formData.city.trim()) {
+      validationErrors.push('City is required');
+    }
+    
+    if (!formData.state.trim() || formData.state.length !== 2) {
+      validationErrors.push('State must be 2 letters');
+    }
+    
+    if (!/^\d{5}$/.test(formData.zip)) {
+      validationErrors.push('ZIP code must be 5 digits');
+    }
+    
+    // Officer information validation
+    if (!formData.officer_name.trim()) {
+      validationErrors.push('Officer name is required');
+    }
+    
+    if (!formData.officer_title.trim()) {
+      validationErrors.push('Officer title is required (e.g., President, Owner, Manager)');
+    }
+    
+    if (!/^\d{3}-?\d{2}-?\d{4}$/.test(formData.officer_ssn)) {
+      validationErrors.push('Officer SSN must be in format XXX-XX-XXXX');
+    }
+    
+    if (!/^\d{5}$/.test(formData.taxpayer_pin)) {
+      validationErrors.push('Taxpayer PIN must be exactly 5 digits');
+    }
+    
+    // Vehicle validation
+    if (formData.vehicles.length === 0) {
+      validationErrors.push('At least one vehicle is required');
+    } else {
+      // Validate each vehicle
+      formData.vehicles.forEach((vehicle, index) => {
+        if (!vehicle.vin.trim()) {
+          validationErrors.push(`Vehicle ${index + 1}: VIN is required`);
+        } else if (vehicle.vin.length < 17) {
+          validationErrors.push(`Vehicle ${index + 1}: VIN must be 17 characters`);
+        }
+        
+        if (!vehicle.category) {
+          validationErrors.push(`Vehicle ${index + 1}: Weight category is required`);
+        }
+        
+        if (!vehicle.used_month) {
+          validationErrors.push(`Vehicle ${index + 1}: First use month is required`);
+        }
+      });
+    }
+    
+    // Show validation errors if any
+    if (validationErrors.length > 0) {
+      const errorMessage = 'Please fix the following issues before proceeding:\n\n' + 
+        validationErrors.map((error, index) => `${index + 1}. ${error}`).join('\n');
+      alert(errorMessage);
+      return;
+    }
+    
+    // Save form data to localStorage (auto-save should handle this, but ensure it's saved)
+    const dataToSave = {
+      formData,
+      categoryData,
+      grandTotals,
+      totalVINs,
+      totalDisposalCredits,
+      totalTax,
+      taxableVehiclesCount,
+      suspendedLoggingCount,
+      suspendedNonLoggingCount
+    };
+    
+    localStorage.setItem('form2290Data', JSON.stringify(dataToSave));
+    
+    // Navigate to filing page
+    router.push('/file');
   };
 
-  const handleCaptchaExpired = () => {
-    setCaptchaToken(null);
-    setCaptchaError('CAPTCHA expired. Please complete it again.');
+  // Handle clearing saved data
+  const handleClearData = () => {
+    if (confirm('Are you sure you want to clear all form data? This action cannot be undone.')) {
+      localStorage.removeItem('form2290Data');
+      window.location.reload(); // Reload to reset form
+    }
   };
-
-  const handleCaptchaError = () => {
-    setCaptchaToken(null);
-    setCaptchaError('CAPTCHA error. Please try again.');
-  };
-
-  // Create submission handler
-  const handleSubmit = createSubmissionHandler(
-    formData,
-    totalTax,
-    totalDisposalCredits,
-    captchaToken,
-    captchaRef,
-    setCaptchaToken,
-    categoryData,
-    grandTotals,
-    API_BASE
-  );
 
   return (
     <>
@@ -230,6 +358,21 @@ export default function Form2290() {
           <LoginModal email={pendingEmail} onClose={() => setShowLoginModal(false)} />
         )}
 
+        {/* Data Loading Indicator */}
+        {isLoadingData && (
+          <div style={{ 
+            background: '#e3f2fd', 
+            padding: '12px', 
+            marginBottom: '16px',
+            borderRadius: '4px',
+            textAlign: 'center',
+            color: '#1565c0',
+            fontSize: '0.9rem'
+          }}>
+            📄 Loading saved form data...
+          </div>
+        )}
+
         <BusinessInfo formData={formData} handleChange={handleChange} />
         
         <ReturnFlags formData={formData} handleChange={handleChange} />
@@ -249,101 +392,54 @@ export default function Form2290() {
           removeVehicle={removeVehicle}
         />
 
-        <TaxComputationTable 
-          categoryData={categoryData}
-          grandTotals={grandTotals}
-          totalVINs={totalVINs}
-          formData={formData}
-          suspendedLoggingCount={suspendedLoggingCount}
-          suspendedNonLoggingCount={suspendedNonLoggingCount}
-          taxableVehiclesCount={taxableVehiclesCount}
-          totalDisposalCredits={totalDisposalCredits}
-        />
-
-        <SignaturePayment 
-          formData={formData}
-          handleChange={handleChange}
-          todayStr={todayStr}
-        />
-
-        {/* CAPTCHA Section */}
-        <h2 style={{ marginTop: 20 }}>Security Verification</h2>
-        <div style={{ marginTop: 12 }}>
-          {process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY && !isLocalhost ? (
-            <>
-              <ReCaptchaComponent
-                ref={captchaRef}
-                sitekey={process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY}
-                onChange={handleCaptchaChange}
-                onExpired={handleCaptchaExpired}
-                onError={handleCaptchaError}
-                theme="light"
-                size="normal"
-              />
-              {captchaError && (
-                <div style={{ 
-                  color: '#d32f2f', 
-                  fontSize: '0.9rem', 
-                  marginTop: '8px',
-                  fontWeight: '500'
-                }}>
-                  ⚠️ {captchaError}
-                </div>
-              )}
-              {!captchaToken && (
-                <div style={{ 
-                  color: '#666', 
-                  fontSize: '0.85rem', 
-                  marginTop: '4px',
-                  fontStyle: 'italic'
-                }}>
-                  Please complete the CAPTCHA verification above to submit your form.
-                </div>
-              )}
-            </>
-          ) : (
-            <div style={{ 
-              color: '#2e7d32', 
-              padding: '12px', 
-              backgroundColor: '#e8f5e8', 
-              border: '1px solid #2e7d32', 
-              borderRadius: '4px',
-              fontSize: '0.9rem'
-            }}>
-              ℹ️ reCAPTCHA is disabled for localhost development. In production, set NEXT_PUBLIC_RECAPTCHA_SITE_KEY.
-            </div>
-          )}
-        </div>
-
-        {/* Actions */}
-        <div style={{ marginTop: 20, display: 'flex', gap: 12 }}>
-          <button
-            type="button"
-            style={{ 
-              padding: '12px 24px',
-              border: 'none',
-              borderRadius: 4,
-              backgroundColor: captchaToken ? '#28a745' : '#cccccc', 
-              color: '#fff', 
-              fontSize: '1.1rem',
-              cursor: captchaToken ? 'pointer' : 'not-allowed',
-              opacity: captchaToken ? 1 : 0.6
-            }}
-            onClick={handleSubmit}
-            disabled={!captchaToken}
-          >
-            SUBMIT FORM 2290
-          </button>
-          {!captchaToken && (
-            <div style={{ 
-              alignSelf: 'center',
-              color: '#666', 
-              fontSize: '0.85rem',
-              fontStyle: 'italic'
-            }}>
-              Complete CAPTCHA to enable submission
-            </div>
-          )}
+        {/* Proceed to Filing Section */}
+        <div style={{ 
+          background: '#f8f9fa', 
+          border: '2px solid #007bff', 
+          borderRadius: '8px', 
+          padding: '20px',
+          marginTop: '20px',
+          textAlign: 'center'
+        }}>
+          <h3 style={{ color: '#007bff', marginBottom: '16px' }}>
+            Ready to File?
+          </h3>
+          <p style={{ margin: '0 0 16px 0', color: '#666' }}>
+            Review your tax computation and complete your filing with secure payment processing.
+          </p>
+          <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              style={{ 
+                padding: '12px 24px',
+                border: 'none',
+                borderRadius: 4,
+                backgroundColor: '#007bff',
+                color: '#fff', 
+                fontSize: '1.1rem',
+                cursor: 'pointer',
+                fontWeight: 'bold'
+              }}
+              onClick={handleProceedToFiling}
+            >
+              Proceed to Filing
+            </button>
+            <button
+              type="button"
+              style={{ 
+                padding: '12px 24px',
+                border: '1px solid #dc3545',
+                borderRadius: 4,
+                backgroundColor: 'transparent',
+                color: '#dc3545', 
+                fontSize: '1rem',
+                cursor: 'pointer'
+              }}
+              onClick={handleClearData}
+            >
+              Clear Form
+            </button>
+          </div>
         </div>
 
         {/* Admin Section */}

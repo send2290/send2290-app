@@ -1,5 +1,6 @@
 import { ChangeEvent } from 'react';
 import { FormData, Vehicle } from '../types/form';
+import { calculateDisposalCredit } from './formUtils';
 
 export const createFormHandler = (
   formData: FormData,
@@ -61,6 +62,7 @@ export const createFormHandler = (
       const field = fld.join('_') as keyof Vehicle;
       const vehicles = [...formData.vehicles];
       const vv = { ...vehicles[idx] } as Record<string, any>;
+      
       if (type === 'checkbox') {
         vv[field] = checked as any;
         
@@ -90,6 +92,19 @@ export const createFormHandler = (
       } else {
         vv[field] = value as any;
         
+        // Automatically recalculate disposal credit when disposal_date changes
+        if (field === 'disposal_date' && value) {
+          const credit = calculateDisposalCredit(vv as Vehicle, value);
+          vv.disposal_credit = credit;
+          console.log(`Auto-calculated disposal credit for vehicle ${vv.vin}: $${credit}`);
+        }
+        
+        // Clear disposal credit if disposal date is removed
+        if (field === 'disposal_date' && !value) {
+          vv.disposal_credit = undefined;
+          console.log(`Cleared disposal credit for vehicle ${vv.vin}`);
+        }
+        
         // Handle category dropdown changes - uncheck relevant checkboxes when category changes away from W
         if (field === 'category') {
           if (value !== 'W') {
@@ -97,8 +112,23 @@ export const createFormHandler = (
             vv.is_suspended = false;
             vv.mileage_5000_or_less = false;
           }
+          
+          // If vehicle has disposal date, recalculate credit with new category
+          if (vv.disposal_date) {
+            const credit = calculateDisposalCredit(vv as Vehicle, vv.disposal_date);
+            vv.disposal_credit = credit;
+            console.log(`Recalculated disposal credit after category change for vehicle ${vv.vin}: $${credit}`);
+          }
+        }
+        
+        // Recalculate disposal credit when used_month changes
+        if (field === 'used_month' && vv.disposal_date) {
+          const credit = calculateDisposalCredit(vv as Vehicle, vv.disposal_date);
+          vv.disposal_credit = credit;
+          console.log(`Recalculated disposal credit after used_month change for vehicle ${vv.vin}: $${credit}`);
         }
       }
+      
       vehicles[idx] = vv as Vehicle;
       setFormData({ ...formData, vehicles });
       return;

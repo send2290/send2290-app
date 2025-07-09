@@ -7,6 +7,7 @@ import { auth } from "../lib/firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { useRouter } from "next/navigation";
 import LoginForm from "./LoginForm";
+import { PaymentProvider } from "./context/PaymentContext";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -173,7 +174,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
         {/* --- Main Content with top padding to account for fixed header --- */}
         <div style={{ paddingTop: "200px" }}>
-          {children}
+          <PaymentProvider>
+            {children}
+          </PaymentProvider>
         </div>
       </body>
     </html>

@@ -19,7 +19,6 @@ export const BusinessInfo: React.FC<BusinessInfoProps> = ({ formData, handleChan
             placeholder="Email"
             value={formData.email}
             onChange={handleChange}
-            required
             disabled={!!auth.currentUser}
             style={{
               backgroundColor: auth.currentUser ? '#f5f5f5' : 'white',
@@ -73,7 +72,6 @@ export const BusinessInfo: React.FC<BusinessInfoProps> = ({ formData, handleChan
           maxLength={10}
           inputMode="numeric"
           title="9 digits in format XX-XXXXXXX"
-          required
         />
         <input 
           name="address" 

@@ -37,6 +37,7 @@ backend/send2290.db
 backend/*.db
 
 # Audit logs (contain sensitive user data - emails, IPs, EINs)
+audit.log
 backend/audit.log
 backend/localaudit.log
 backend/Audit/*.log

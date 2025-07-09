@@ -54,7 +54,6 @@ export const ReturnFlags: React.FC<ReturnFlagsProps> = ({ formData, handleChange
               name="amended_month" 
               value={formData.amended_month || ''} 
               onChange={handleChange}
-              required
             >
               <option value="">Select Month Being Amended</option>
               {months.map((m) => (
@@ -83,7 +82,6 @@ export const ReturnFlags: React.FC<ReturnFlagsProps> = ({ formData, handleChange
             value={formData.vin_correction_explanation || ''}
             onChange={handleChange}
             rows={4}
-            required
             style={{ width: '100%', resize: 'vertical' }}
           />
         </div>

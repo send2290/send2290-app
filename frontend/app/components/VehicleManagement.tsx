@@ -61,13 +61,11 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
               title="17 chars"
               value={v.vin}
               onChange={handleChange}
-              required
             />
             <select
               name={`vehicle_${i}_used_month`}
               value={v.used_month}
               onChange={handleChange}
-              required
               style={{ minWidth: 150 }}
             >
               <option value="">Select Month</option>
@@ -79,7 +77,6 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
               name={`vehicle_${i}_category`}
               value={v.category}
               onChange={handleChange}
-              required
               style={{ minWidth: 180 }}
             >
               <option value="">Select Weight</option>
@@ -140,11 +137,13 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
                   checked={!!v.disposal_date} 
                   onChange={(e) => {
                     const vehicles = [...formData.vehicles];
+                    const disposalDate = e.target.checked ? todayStr : undefined;
                     vehicles[i] = {
                       ...vehicles[i],
-                      disposal_date: e.target.checked ? todayStr : undefined,
+                      disposal_date: disposalDate,
                       disposal_reason: e.target.checked ? vehicles[i].disposal_reason : undefined,
-                      disposal_amount: e.target.checked ? vehicles[i].disposal_amount : undefined
+                      disposal_amount: e.target.checked ? vehicles[i].disposal_amount : undefined,
+                      disposal_credit: disposalDate ? calculateDisposalCredit(vehicles[i], disposalDate) : undefined
                     };
                     // Create a synthetic event to pass to handleChange
                     const syntheticEvent = {
@@ -228,13 +227,11 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
                     handleChange(syntheticEvent);
                   }}
                   placeholder="Disposal Date"
-                  required
                 />
                 <select
                   name={`vehicle_${i}_disposal_reason`}
                   value={v.disposal_reason || ''}
                   onChange={handleChange}
-                  required
                 >
                   <option value="">Disposal Reason</option>
                   <option value="Sold">Sold</option>
@@ -298,7 +295,6 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
                   name={`vehicle_${i}_tgw_increase_month`}
                   value={v.tgw_increase_month || ''}
                   onChange={handleChange}
-                  required
                 >
                   <option value="">Month Weight Increased</option>
                   {months.map((m) => (
@@ -309,7 +305,6 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
                   name={`vehicle_${i}_tgw_previous_category`}
                   value={v.tgw_previous_category || ''}
                   onChange={handleChange}
-                  required
                 >
                   <option value="">Previous Weight Category</option>
                   {weightCategories.filter(w => w.value !== 'W').map((w) => (
@@ -328,7 +323,6 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
                   value={v.vin_correction_reason || ''}
                   onChange={handleChange}
                   style={{ minWidth: '300px' }}
-                  required
                 />
               </div>
             )}

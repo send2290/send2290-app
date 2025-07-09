@@ -24,7 +24,6 @@ export const OfficerInfo: React.FC<OfficerInfoProps> = ({ formData, handleChange
           placeholder="Officer Name (Required for signing)" 
           value={formData.officer_name} 
           onChange={handleChange} 
-          required
           title="Name of the person authorized to sign this return"
         />
         <input 
@@ -32,7 +31,6 @@ export const OfficerInfo: React.FC<OfficerInfoProps> = ({ formData, handleChange
           placeholder="Officer Title (e.g., President, Owner, Manager)" 
           value={formData.officer_title} 
           onChange={handleChange} 
-          required
           title="Title of the person signing this return"
         />
         <input 
@@ -57,7 +55,6 @@ export const OfficerInfo: React.FC<OfficerInfoProps> = ({ formData, handleChange
           }}
           pattern="\d{3}-\d{2}-\d{4}"
           maxLength={11}
-          required
           title="Social Security Number of the officer signing the return (format: XXX-XX-XXXX)"
         />
         <input 
@@ -69,7 +66,6 @@ export const OfficerInfo: React.FC<OfficerInfoProps> = ({ formData, handleChange
           title="5-digit PIN for electronic signature"
           value={formData.taxpayer_pin} 
           onChange={handleChange} 
-          required
         />
       </div>
     </>

@@ -13,9 +13,10 @@ export const createSubmissionHandler = (
   setCaptchaToken: (token: string | null) => void,
   categoryData: Record<string, CategoryData>,
   grandTotals: GrandTotals,
-  API_BASE: string
+  API_BASE: string,
+  onPaymentRequired?: (onPaymentSuccess: (paymentIntentId: string) => void) => void
 ) => {
-  return async () => {
+  return async (paymentIntentId?: string) => {
     // 1) run client-side validation FIRST
     const err = validateBeforeSubmit(formData, totalTax, captchaToken, totalDisposalCredits);
     if (err) { 
@@ -73,6 +74,19 @@ export const createSubmissionHandler = (
       }
     }
 
+    // Check if payment is required and not provided
+    if (!paymentIntentId && onPaymentRequired) {
+      // Trigger payment modal
+      onPaymentRequired((newPaymentIntentId: string) => {
+        // Recursively call this function with the payment intent ID
+        createSubmissionHandler(
+          formData, totalTax, totalDisposalCredits, captchaToken, 
+          captchaRef, setCaptchaToken, categoryData, grandTotals, API_BASE
+        )(newPaymentIntentId);
+      });
+      return;
+    }
+
     // 4) Submit and download PDF (which also generates XML)
     try {
       // Include the calculated category data from frontend
@@ -101,6 +115,7 @@ export const createSubmissionHandler = (
         count_w_suspended_logging: formData.vehicles.filter(v => v.category === 'W' && v.is_logging).length,
         count_w_suspended_non_logging: formData.vehicles.filter(v => v.category === 'W' && !v.is_logging).length,
         captchaToken: finalCaptchaToken,
+        payment_intent_id: paymentIntentId, // Include payment verification
         // Add the calculated category data and totals
         categoryData: categoryData,
         grandTotals: grandTotals,

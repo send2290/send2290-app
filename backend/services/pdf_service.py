@@ -940,3 +940,100 @@ class PDFGenerationService:
             return any(v.get("mileage_5000_or_less", False) and not v.get("is_agricultural", False) for v in vehicles)
         
         return False
+
+    def generate_preview_pdf(self, data):
+        """Generate a preview PDF without storing to database or S3"""
+        # Validate input
+        if not data.get("business_name") or not data.get("ein"):
+            raise ValueError("Missing business_name or ein")
+        
+        if not os.path.exists(self.template_path):
+            raise FileNotFoundError("PDF template not found")
+        
+        # For preview, use the primary month or default to July
+        vehicles = data.get('vehicles', [])
+        if not vehicles:
+            raise ValueError("No vehicles found")
+        
+        # Group vehicles by month, but for preview just use the first month or July
+        vehicles_by_month = group_vehicles_by_month(vehicles)
+        
+        if not vehicles_by_month:
+            # Default to July if no specific month found
+            preview_month = "2025-07"
+            month_vehicles = vehicles
+        else:
+            # Use the first month available
+            preview_month = list(vehicles_by_month.keys())[0]
+            month_vehicles = vehicles_by_month[preview_month]
+        
+        print(f"📅 Generating preview for month {preview_month} with {len(month_vehicles)} vehicles")
+        
+        # Create month-specific data for preview
+        month_data = self._prepare_month_data(data, preview_month, month_vehicles)
+        
+        # Generate PDF for preview
+        preview_pdf_path = self._generate_preview_pdf_for_month(month_data, preview_month)
+        
+        return preview_pdf_path
+
+    def generate_preview_pdfs_all_months(self, data):
+        """Generate preview PDFs for all months found in the vehicle data"""
+        # Validate input
+        if not data.get("business_name") or not data.get("ein"):
+            raise ValueError("Missing business_name or ein")
+        
+        if not os.path.exists(self.template_path):
+            raise FileNotFoundError("PDF template not found")
+        
+        # Group vehicles by month
+        vehicles_by_month = group_vehicles_by_month(data.get('vehicles', []))
+        
+        if not vehicles_by_month:
+            raise ValueError("No vehicles found")
+        
+        created_previews = []
+        
+        print(f"📅 Generating previews for {len(vehicles_by_month)} month(s): {list(vehicles_by_month.keys())}")
+        
+        for month, month_vehicles in vehicles_by_month.items():
+            print(f"📅 Processing preview for month {month} with {len(month_vehicles)} vehicles")
+            
+            # Create month-specific data
+            month_data = self._prepare_month_data(data, month, month_vehicles)
+            
+            # Generate PDF for this month
+            preview_pdf_path = self._generate_preview_pdf_for_month(month_data, month)
+            
+            created_previews.append({
+                'month': month,
+                'vehicle_count': len(month_vehicles),
+                'pdf_path': preview_pdf_path
+            })
+        
+        return created_previews
+
+    def _generate_preview_pdf_for_month(self, month_data, month):
+        """Generate preview PDF for a specific month (separate from main generation)"""
+        template = PdfReader(open(self.template_path, "rb"), strict=False)
+        writer = PdfWriter()
+        
+        # Process each page
+        for page_num in range(1, len(template.pages) + 1):
+            overlay = self._create_page_overlay(page_num, month_data, month)
+            template_page = template.pages[page_num - 1]
+            
+            if overlay:
+                template_page.merge_page(overlay)
+            
+            writer.add_page(template_page)
+        
+        # Save preview PDF to a different location
+        out_dir = os.path.join(os.path.dirname(__file__), "..", "output")
+        os.makedirs(out_dir, exist_ok=True)
+        out_path = os.path.join(out_dir, f"preview_form2290_{month}.pdf")
+        
+        with open(out_path, "wb") as f:
+            writer.write(f)
+        
+        return out_path

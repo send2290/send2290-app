@@ -24,6 +24,11 @@ class Config:
     # Firebase Configuration
     FIREBASE_ADMIN_KEY_JSON = os.getenv('FIREBASE_ADMIN_KEY_JSON')
     
+    # Stripe Configuration
+    STRIPE_SECRET_KEY = os.getenv('STRIPE_SECRET_KEY')
+    STRIPE_PUBLISHABLE_KEY = os.getenv('STRIPE_PUBLISHABLE_KEY')
+    STRIPE_WEBHOOK_SECRET = os.getenv('STRIPE_WEBHOOK_SECRET')
+    
     # Admin Configuration
     ADMIN_EMAIL = os.getenv('ADMIN_EMAIL', 'admin@send2290.com')
     

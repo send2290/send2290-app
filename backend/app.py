@@ -179,17 +179,47 @@ def register_legacy_routes(app):
     @app.route("/build-pdf", methods=["POST", "OPTIONS"])
     @verify_firebase_token
     def build_pdf():
-        """Generate PDF for form submission - LEGACY ROUTE"""
+        """Generate PDF for form submission - LEGACY ROUTE (requires payment)"""
         if request.method == "OPTIONS":
             return jsonify({}), 200
         
         try:
+            import stripe
             from services.pdf_service import PDFGenerationService
             
             data = request.get_json() or {}
             
             if not data.get("business_name") or not data.get("ein"):
                 return jsonify({"error": "Missing business_name or ein"}), 400
+            
+            # Check for payment verification
+            payment_intent_id = data.get("payment_intent_id")
+            if not payment_intent_id:
+                return jsonify({"error": "Payment required. Please complete payment before submitting."}), 402
+            
+            # Verify payment with Stripe (skip in development if not configured)
+            if Config.FLASK_ENV == 'development' and payment_intent_id == 'dev_mode_fake_client_secret':
+                enhanced_audit.log_error_event(
+                    user_email=request.user.get('email', 'unknown'),
+                    error_type="PAYMENT_BYPASS_DEV_MODE",
+                    error_message="Development mode payment bypass",
+                    endpoint="/build-pdf"
+                )
+            elif Config.STRIPE_SECRET_KEY:
+                try:
+                    stripe.api_key = Config.STRIPE_SECRET_KEY
+                    intent = stripe.PaymentIntent.retrieve(payment_intent_id)
+                    
+                    if intent.status != 'succeeded':
+                        return jsonify({"error": "Payment not completed"}), 402
+                    
+                    if intent.metadata.get('user_uid') != request.user['uid']:
+                        return jsonify({"error": "Payment verification failed"}), 402
+                        
+                except stripe.error.StripeError as e:
+                    return jsonify({"error": f"Payment verification failed: {str(e)}"}), 402
+            else:
+                return jsonify({"error": "Payment system not configured"}), 402
             
             # Generate PDFs using the service
             pdf_service = PDFGenerationService()
@@ -198,7 +228,7 @@ def register_legacy_routes(app):
             enhanced_audit.log_error_event(
                 user_email=request.user.get('email', 'unknown'),
                 error_type="PDF_SUBMISSION_SUCCESS",
-                error_message=f"PDF generated for {len(created_files)} month(s)",
+                error_message=f"PDF generated for {len(created_files)} month(s) - Payment: {payment_intent_id}",
                 endpoint="/build-pdf"
             )
             
@@ -250,6 +280,91 @@ def register_legacy_routes(app):
             "message": "PDF download temporarily disabled during refactoring",
             "status": "coming_soon"
         }), 503
+
+    @app.route("/preview-pdf", methods=["POST", "OPTIONS"])
+    @verify_firebase_token
+    def preview_pdf():
+        """Generate PDF preview for form data (no payment required, no database storage)"""
+        if request.method == "OPTIONS":
+            return jsonify({"message": "CORS preflight"}), 200
+        
+        try:
+            data = request.get_json()
+            if not data:
+                return jsonify({"error": "No data provided"}), 400
+            
+            # Import PDF service
+            from services.pdf_service import PDFGenerationService
+            
+            # Validate required fields
+            if not data.get("business_name") or not data.get("ein"):
+                return jsonify({"error": "Missing business_name or ein"}), 400
+            
+            if not data.get("vehicles"):
+                return jsonify({"error": "No vehicles provided"}), 400
+            
+            # Generate preview PDFs for all months
+            pdf_service = PDFGenerationService()
+            preview_files = pdf_service.generate_preview_pdfs_all_months(data)
+            
+            # If only one file, return it directly
+            if len(preview_files) == 1:
+                return send_file(
+                    preview_files[0]['pdf_path'],
+                    as_attachment=True,
+                    download_name=f"form2290_preview_{preview_files[0]['month']}.pdf",
+                    mimetype='application/pdf'
+                )
+            else:
+                # Multiple files - return JSON with info about all files
+                preview_info = []
+                for file_info in preview_files:
+                    month = file_info['month']
+                    month_display = f"{month[:4]}-{month[5:]}" if len(month) >= 7 else month
+                    preview_info.append({
+                        'month': month,
+                        'month_display': month_display,
+                        'vehicle_count': file_info['vehicle_count'],
+                        'download_url': f"/preview-pdf-by-month/{month}",
+                        'filename': f"form2290_preview_{month_display}_{file_info['vehicle_count']}vehicles.pdf"
+                    })
+                
+                return jsonify({
+                    "success": True,
+                    "multiple_files": True,
+                    "message": f"Preview generated for {len(preview_files)} month(s)",
+                    "files": preview_info
+                }), 200
+            
+        except Exception as e:
+            print(f"Preview PDF generation error: {e}")
+            return jsonify({"error": f"Preview generation failed: {str(e)}"}), 500
+    
+    @app.route("/preview-pdf-by-month/<month>", methods=["GET"])
+    @verify_firebase_token
+    def preview_pdf_by_month(month):
+        """Download a specific month's preview PDF"""
+        try:
+            import os
+            
+            # Look for the preview file
+            out_dir = os.path.join(os.path.dirname(__file__), "output")
+            preview_file = os.path.join(out_dir, f"preview_form2290_{month}.pdf")
+            
+            if not os.path.exists(preview_file):
+                return jsonify({"error": "Preview file not found. Please regenerate preview."}), 404
+            
+            month_display = f"{month[:4]}-{month[5:]}" if len(month) >= 7 else month
+            return send_file(
+                preview_file,
+                as_attachment=True,
+                download_name=f"form2290_preview_{month_display}.pdf",
+                mimetype='application/pdf'
+            )
+            
+        except Exception as e:
+            print(f"Preview download error: {e}")
+            return jsonify({"error": f"Preview download failed: {str(e)}"}), 500
 
 # Create the Flask app
 app = create_app()
