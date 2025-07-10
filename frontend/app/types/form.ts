@@ -11,7 +11,6 @@ export interface Vehicle {
   disposal_reason?: string         // Reason for disposal/sale
   disposal_amount?: number         // Amount received for disposal
   disposal_credit?: number         // Calculated disposal credit (full period - partial period)
-  sale_to_private_party?: boolean  // For PrivateSaleVehicleStatement
   tgw_increased?: boolean          // If weight category increased during year
   tgw_increase_month?: string      // Month weight increased
   tgw_previous_category?: string   // Previous weight category
@@ -44,6 +43,7 @@ export interface FormData {
   vin_correction_explanation: string
   
   // Special conditions
+  include_special_conditions: boolean
   special_conditions: string
   
   // Business Officer Information

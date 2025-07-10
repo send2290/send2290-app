@@ -88,17 +88,30 @@ export const ReturnFlags: React.FC<ReturnFlagsProps> = ({ formData, handleChange
       )}
 
       {/* Special Conditions */}
-      <h2 style={{ marginTop: 20 }}>Special Conditions (Optional)</h2>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <textarea
-          name="special_conditions"
-          placeholder="Describe any special conditions that apply to this return..."
-          value={formData.special_conditions || ''}
-          onChange={handleChange}
-          rows={2}
-          style={{ minWidth: '400px', resize: 'vertical' }}
-        />
-      </div>
+      <h2 style={{ marginTop: 20 }}>
+        <label style={{ ...labelSmall, cursor: 'pointer' }}>
+          <input 
+            type="checkbox" 
+            name="include_special_conditions" 
+            checked={formData.include_special_conditions || false} 
+            onChange={handleChange}
+            style={{ cursor: 'pointer' }}
+          />
+          <span style={{ cursor: 'pointer' }}>Special Conditions (Optional)</span>
+        </label>
+      </h2>
+      {formData.include_special_conditions && (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <textarea
+            name="special_conditions"
+            placeholder="Describe any special conditions that apply to this return..."
+            value={formData.special_conditions || ''}
+            onChange={handleChange}
+            rows={2}
+            style={{ minWidth: '400px', resize: 'vertical' }}
+          />
+        </div>
+      )}
     </>
   );
 };

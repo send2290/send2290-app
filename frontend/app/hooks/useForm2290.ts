@@ -36,6 +36,7 @@ export const useForm2290 = () => {
     vin_correction_explanation: '',
     
     // Special conditions
+    include_special_conditions: false,
     special_conditions: '',
     
     // Business Officer Information (required for signing)
@@ -165,7 +166,6 @@ export const useForm2290 = () => {
           disposal_date: undefined,
           disposal_reason: undefined,
           disposal_amount: undefined,
-          sale_to_private_party: false,
           tgw_increased: false,
           tgw_increase_month: undefined,
           tgw_previous_category: undefined,

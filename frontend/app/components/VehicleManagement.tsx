@@ -193,17 +193,6 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
                 />
                 <span style={{ cursor: 'pointer' }}>VIN Corrected</span>
               </label>
-
-              <label style={{ ...labelSmall, cursor: 'pointer' }}>
-                <input 
-                  type="checkbox" 
-                  name={`vehicle_${i}_sale_to_private_party`} 
-                  checked={v.sale_to_private_party || false} 
-                  onChange={handleChange}
-                  style={{ cursor: 'pointer' }}
-                />
-                <span style={{ cursor: 'pointer' }}>Sold to Private Party</span>
-              </label>
             </div>
 
             {/* Disposal details */}
