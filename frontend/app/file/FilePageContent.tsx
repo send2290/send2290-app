@@ -2,9 +2,9 @@
 import { useState, useRef, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { auth } from '../../lib/firebase';
+import { onAuthStateChanged, User } from 'firebase/auth';
 import ReCaptchaComponent, { ReCaptchaRef } from '../components/ReCaptcha';
 import PaymentModal from '../components/PaymentModal';
-import FormPreviewModal from '../components/FormPreviewModal';
 import { TaxComputationTable } from '../components/TaxComputationTable';
 import { SignaturePayment } from '../components/SignaturePayment';
 import { createSubmissionHandler } from '../utils/submissionHandler';
@@ -14,6 +14,10 @@ import { FormData, CategoryData, GrandTotals } from '../types/form';
 export default function FilePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  
+  // Authentication state
+  const [user, setUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
   
   // Set up API base URL
   const isBrowser = typeof window !== 'undefined';
@@ -27,7 +31,6 @@ export default function FilePageContent() {
   
   // Payment state
   const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [paymentIntentId, setPaymentIntentId] = useState<string | null>(null);
   
@@ -59,6 +62,16 @@ export default function FilePageContent() {
   
   const todayStr = new Date().toISOString().split('T')[0];
   const filingFee = 45.00;
+  
+  // Authentication effect
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setAuthLoading(false);
+    });
+    
+    return () => unsubscribe();
+  }, []);
   
   // Check if we're on localhost after component mounts
   useEffect(() => {
@@ -187,6 +200,127 @@ export default function FilePageContent() {
     setIsSubmitting(false);
     delete (window as any).pendingPaymentCallback;
   };
+
+  // Preview handler - directly opens payment modal
+  const handlePreviewClick = () => {
+    if (!formData) return;
+    
+    // Check authentication first
+    if (authLoading) {
+      setValidationError('Please wait for authentication to complete');
+      return;
+    }
+    
+    if (!user) {
+      setValidationError('Please sign in to preview the form');
+      return;
+    }
+    
+    // Clear any existing errors
+    setValidationError('');
+    
+    // Set up payment callback to generate preview after payment
+    const onPaymentSuccess = async (paymentIntentId: string) => {
+      try {
+        setIsSubmitting(true);
+        
+        // Prepare the data payload
+        const previewData = {
+          ...formData,
+          categoryData,
+          grandTotals,
+          totalVINs,
+          totalDisposalCredits,
+          totalTax,
+          taxableVehiclesCount,
+          suspendedLoggingCount,
+          suspendedNonLoggingCount,
+          payment_intent_id: paymentIntentId
+        };
+
+        // Get auth token
+        const token = await user.getIdToken();
+
+        // Make request to preview endpoint
+        const response = await fetch(`${API_BASE}/preview-pdf`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify(previewData)
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to generate preview');
+        }
+
+        // Check if response is JSON (multiple files) or PDF (single file)
+        const contentType = response.headers.get('content-type');
+        
+        if (contentType && contentType.includes('application/json')) {
+          // Multiple files response
+          const result = await response.json();
+          
+          if (result.multiple_files && result.files) {
+            // Handle multiple files - download each one
+            for (const file of result.files) {
+              // Download each file separately
+              const fileResponse = await fetch(`${API_BASE}${file.download_url}`, {
+                method: 'GET',
+                headers: {
+                  'Authorization': `Bearer ${token}`
+                }
+              });
+              
+              if (fileResponse.ok) {
+                const blob = await fileResponse.blob();
+                const url = window.URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = file.filename;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                window.URL.revokeObjectURL(url);
+              }
+            }
+            
+            // Show success message via alert
+            alert(`✅ Successfully generated ${result.files.length} paid preview PDF(s) for different months.`);
+          }
+        } else {
+          // Single file response - download the PDF directly
+          const blob = await response.blob();
+          const url = window.URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = `form2290_paid_preview.pdf`;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          window.URL.revokeObjectURL(url);
+
+          // Optionally open in new tab for viewing
+          const viewUrl = window.URL.createObjectURL(blob);
+          window.open(viewUrl, '_blank');
+          
+          // Show success message via alert
+          alert('✅ Paid preview PDF generated successfully!');
+        }
+
+      } catch (err: any) {
+        console.error('Preview generation error:', err);
+        setValidationError(err.message || 'Failed to generate preview');
+      } finally {
+        setIsSubmitting(false);
+      }
+    };
+    
+    // Open payment modal with preview callback
+    handlePaymentRequired(onPaymentSuccess);
+  };
   
   // Form change handler for signature/payment section
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -223,6 +357,12 @@ export default function FilePageContent() {
   // Create submission handler
   const handleSubmit = async () => {
     if (!formData) return;
+    
+    // Check authentication first
+    if (authLoading) {
+      setValidationError('Please wait for authentication to complete');
+      return;
+    }
     
     // Simple validation for filing page (only signature and payment fields)
     let validationErrorMsg = '';
@@ -332,6 +472,15 @@ export default function FilePageContent() {
     return (
       <div style={{ padding: '20px', textAlign: 'center' }}>
         <p>Loading form data...</p>
+      </div>
+    );
+  }
+
+  // Show loading state while checking authentication
+  if (authLoading) {
+    return (
+      <div style={{ padding: '20px', textAlign: 'center' }}>
+        <p>Checking authentication...</p>
       </div>
     );
   }
@@ -565,6 +714,23 @@ export default function FilePageContent() {
 
         {/* Submit Actions */}
         <div className="submit-actions" style={{ marginTop: 20, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          
+          {/* Authentication Status */}
+          {!authLoading && (
+            <div style={{
+              width: '100%',
+              padding: '8px 12px',
+              background: user ? '#d4edda' : '#fff3cd',
+              border: `1px solid ${user ? '#c3e6cb' : '#ffeaa7'}`,
+              borderRadius: '4px',
+              color: user ? '#155724' : '#856404',
+              fontSize: '0.9rem',
+              marginBottom: '8px'
+            }}>
+              🔐 {user ? `Signed in as: ${user.email}` : 'Authentication required - account will be created automatically during submission'}
+            </div>
+          )}
+          
           {validationError && (
             <div style={{
               width: '100%',
@@ -593,7 +759,7 @@ export default function FilePageContent() {
               transition: 'all 0.2s',
               minWidth: '200px'
             }}
-            onClick={() => setShowPreviewModal(true)}
+            onClick={handlePreviewClick}
             onMouseOver={(e) => {
               e.currentTarget.style.backgroundColor = '#f8f9fa';
             }}
@@ -601,7 +767,7 @@ export default function FilePageContent() {
               e.currentTarget.style.backgroundColor = '#fff';
             }}
           >
-            📄 Preview Form 2290
+            📄 Pay & Preview Form 2290 ($45.00)
           </button>
           
           <button
@@ -610,21 +776,23 @@ export default function FilePageContent() {
               padding: '12px 24px',
               border: 'none',
               borderRadius: 4,
-              backgroundColor: (captchaToken && !isSubmitting) ? '#28a745' : '#cccccc', 
+              backgroundColor: (!authLoading && captchaToken && !isSubmitting) ? '#28a745' : '#cccccc', 
               color: '#fff', 
               fontSize: '1.1rem',
-              cursor: (captchaToken && !isSubmitting) ? 'pointer' : 'not-allowed',
-              opacity: (captchaToken && !isSubmitting) ? 1 : 0.6,
+              cursor: (!authLoading && captchaToken && !isSubmitting) ? 'pointer' : 'not-allowed',
+              opacity: (!authLoading && captchaToken && !isSubmitting) ? 1 : 0.6,
               flex: '1',
               minWidth: '200px'
             }}
             onClick={handleSubmit}
-            disabled={!captchaToken || isSubmitting}
+            disabled={authLoading || !captchaToken || isSubmitting}
           >
-            {isSubmitting ? 'Processing...' : `SUBMIT FORM 2290 ($${(Math.max(0, totalTax - totalDisposalCredits) + filingFee).toFixed(2)})`}
+            {isSubmitting ? 'Processing...' : 
+             authLoading ? 'Checking Authentication...' :
+             `SUBMIT FORM 2290 ($${(Math.max(0, totalTax - totalDisposalCredits) + filingFee).toFixed(2)})`}
           </button>
           
-          {!captchaToken && (
+          {(!captchaToken || authLoading) && (
             <div style={{ 
               alignSelf: 'center',
               color: '#666', 
@@ -633,7 +801,7 @@ export default function FilePageContent() {
               flex: '1',
               minWidth: '200px'
             }}>
-              Complete CAPTCHA to enable submission
+              {authLoading ? 'Checking authentication...' : 'Complete CAPTCHA to enable submission'}
             </div>
           )}
         </div>
@@ -645,21 +813,6 @@ export default function FilePageContent() {
         onPaymentSuccess={handlePaymentSuccess}
         onCancel={handlePaymentCancel}
         isSubmitting={isSubmitting}
-      />
-
-      {/* Preview Modal */}
-      <FormPreviewModal
-        isOpen={showPreviewModal}
-        onClose={() => setShowPreviewModal(false)}
-        formData={formData}
-        categoryData={categoryData}
-        grandTotals={grandTotals}
-        totalVINs={totalVINs}
-        totalDisposalCredits={totalDisposalCredits}
-        totalTax={totalTax}
-        taxableVehiclesCount={taxableVehiclesCount}
-        suspendedLoggingCount={suspendedLoggingCount}
-        suspendedNonLoggingCount={suspendedNonLoggingCount}
       />
     </>
   );

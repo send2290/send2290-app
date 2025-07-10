@@ -14,7 +14,10 @@ def verify_firebase_token(f):
         
         auth_header = request.headers.get('Authorization', '')
         if not auth_header.startswith('Bearer '):
-            return jsonify({"error": "Authorization header missing"}), 401
+            return jsonify({
+                "error": "Authorization header missing", 
+                "message": "Please sign in to submit your form. Your account will be created automatically if needed."
+            }), 401
         
         token = auth_header.split('Bearer ')[1]
         try:

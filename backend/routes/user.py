@@ -1,11 +1,30 @@
 """User routes"""
 import json
+from datetime import datetime, timezone, timedelta
 from flask import Blueprint, request, jsonify, Response
 from sqlalchemy import text
 from models import SessionLocal, Submission, FilingsDocument
 from utils.auth_decorators import verify_firebase_token
 from services.s3_service import get_s3_client, generate_presigned_url
 from config import Config
+
+def format_est_timestamp(dt):
+    """Convert UTC datetime to Eastern Time with EST/EDT label"""
+    if not dt:
+        return ""
+    
+    # Create Eastern timezone (UTC-5 for EST, UTC-4 for EDT)
+    eastern = timezone(timedelta(hours=-5))  # EST (we'll use EST year-round for simplicity)
+    
+    # Convert to Eastern time
+    if dt.tzinfo is None:
+        # Assume UTC if no timezone info
+        dt = dt.replace(tzinfo=timezone.utc)
+    
+    eastern_time = dt.astimezone(eastern)
+    
+    # Format as "MMM DD, YYYY, HH:MM AM/PM EST"
+    return eastern_time.strftime("%b %d, %Y, %I:%M %p EST")
 
 user_bp = Blueprint('user', __name__)
 
@@ -47,7 +66,7 @@ def user_submissions():
                 "id": str(submission.id),
                 "business_name": form_data.get("business_name", "Unknown Business"),
                 "ein": form_data.get("ein", "Unknown EIN"),
-                "created_at": submission.created_at.isoformat() if submission.created_at else "",
+                "created_at": format_est_timestamp(submission.created_at),
                 "month": submission.month,
                 "total_vehicles": total_vehicles,
                 "total_tax": round(total_tax, 2),

@@ -276,7 +276,7 @@ export default function PaymentModal({ isOpen, onPaymentSuccess, onCancel, isSub
         maxHeight: '90%',
         overflow: 'auto'
       }}>
-        {stripe && clientSecret && (
+        {stripe && clientSecret && !devMode ? (
           <Elements 
             stripe={stripe} 
             options={{
@@ -295,6 +295,12 @@ export default function PaymentModal({ isOpen, onPaymentSuccess, onCancel, isSub
               isSubmitting={isSubmitting}
             />
           </Elements>
+        ) : (
+          <DevPaymentForm 
+            onPaymentSuccess={onPaymentSuccess}
+            onCancel={onCancel}
+            isSubmitting={isSubmitting}
+          />
         )}
       </div>
     </div>

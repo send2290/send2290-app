@@ -476,3 +476,122 @@ export const calculateDisposalCredit = (vehicle: Vehicle, disposalDate: string):
   
   return credit;
 };
+
+export const validateMainPageBeforeProceeding = (formData: FormData): string | null => {
+  // Business information validation
+  if (!formData.business_name.trim()) return 'Business Name is required';
+  if (!/^\d{2}-\d{7}$/.test(formData.ein)) return 'EIN must be 9 digits in format XX-XXXXXXX';
+  
+  // IRS Business Rule: EIN cannot be all 9s (R0000-021)
+  const einDigitsOnly = formData.ein.replace(/-/g, '');
+  if (einDigitsOnly === '999999999') return 'EIN cannot be all 9s';
+  
+  if (!formData.address.trim()) return 'Business Address is required';
+  if (!formData.city.trim()) return 'City is required';
+  if (!formData.state.trim() || formData.state.length !== 2) return 'State must be 2 letters';
+  if (!/^\d{5}$/.test(formData.zip)) return 'ZIP code must be 5 digits';
+  
+  // Address length validation (IRS requirement: max 35 chars per line)
+  if (formData.address.length > 35) return 'Address line 1 cannot exceed 35 characters';
+  if (formData.address_line2 && formData.address_line2.length > 35) return 'Address line 2 cannot exceed 35 characters';
+  
+  // Business officer information validation
+  if (!formData.officer_name.trim()) return 'Officer name is required for signing';
+  if (!formData.officer_title.trim()) return 'Officer title is required (e.g., President, Owner, Manager)';
+  if (!/^\d{3}-?\d{2}-?\d{4}$/.test(formData.officer_ssn)) return 'Officer SSN must be in format XXX-XX-XXXX or XXXXXXXXX';
+  if (!/^\d{5}$/.test(formData.taxpayer_pin)) return 'Taxpayer PIN must be exactly 5 digits';
+  
+  // IRS Business Rule: Taxpayer PIN cannot be all zeros (R0000-031, R0000-084-01)
+  if (formData.taxpayer_pin === '00000') return 'Taxpayer PIN cannot be all zeros';
+  
+  // Amendment validation
+  if (formData.amended_return && !formData.amended_month) {
+    return 'Month being amended is required for amended returns';
+  }
+  
+  // IRS Business Rule F2290-003-01: TGW increase requires amended return
+  const hasTGWIncrease = formData.vehicles.some(v => v.tgw_increased);
+  if (hasTGWIncrease && !formData.amended_return) {
+    return 'Amended return must be checked when any vehicle has weight category increase';
+  }
+  
+  // VIN correction validation
+  if (formData.vin_correction && !formData.vin_correction_explanation.trim()) {
+    return 'VIN correction explanation is required';
+  }
+  
+  // IRS Business Rule F2290-032-01: VIN correction requires at least one VIN
+  if (formData.vin_correction && formData.vehicles.length === 0) {
+    return 'At least one vehicle is required when VIN correction is checked';
+  }
+  
+  // IRS Business Rule F2290-033-01: Amended return requires at least one VIN
+  if (formData.amended_return && formData.vehicles.length === 0) {
+    return 'At least one vehicle is required for amended returns';
+  }
+  
+  // IRS Business Rule F2290-027-01: Non-final returns require at least one VIN
+  if (!formData.final_return && formData.vehicles.length === 0) {
+    return 'At least one vehicle is required unless this is a final return';
+  }
+  
+  // Preparer information validation (if applicable)
+  if (formData.include_preparer) {
+    if (!formData.preparer_name.trim()) return 'Preparer Name is required';
+    if (!formData.preparer_ptin.trim()) return 'Preparer PTIN is required';
+    if (!formData.date_prepared) return 'Date Prepared is required';
+    if (!formData.preparer_firm_name.trim()) return 'Firm Name is required';
+    if (!/^\d{2}-\d{7}$/.test(formData.preparer_firm_ein)) return 'Firm EIN must be 9 digits in format XX-XXXXXXX';
+    if (!formData.preparer_firm_address.trim()) return 'Firm Address is required';
+    if (!formData.preparer_firm_citystatezip.trim()) return 'Firm City/State/ZIP is required';
+    if (!/^\d{10}$/.test(formData.preparer_firm_phone)) return 'Firm Phone must be 10 digits';
+  }
+  
+  // Designee validation (if applicable)
+  if (formData.consent_to_disclose) {
+    if (!formData.designee_name.trim()) return 'Designee Name is required';
+    if (!/^\d{10}$/.test(formData.designee_phone)) return 'Designee Phone must be 10 digits';
+    if (!formData.designee_pin.trim()) return 'Designee PIN is required';
+  }
+  
+  // Vehicle validation
+  for (let idx = 0; idx < formData.vehicles.length; idx++) {
+    const v = formData.vehicles[idx];
+    if (!v.vin.trim()) return `VIN is required for vehicle #${idx + 1}`;
+    if (v.vin.length < 17) return `Vehicle ${idx + 1}: VIN must be 17 characters`;
+    if (!v.used_month) return `Month is required for vehicle #${idx + 1}`;
+    if (!v.category) return `Weight is required for vehicle #${idx + 1}`;
+    
+    // Enhanced vehicle validation including disposal reason
+    if (v.disposal_date && !v.disposal_reason) {
+      return `Disposal reason is required for vehicle #${idx + 1}`;
+    }
+    if (v.tgw_increased && (!v.tgw_increase_month || !v.tgw_previous_category)) {
+      return `Weight increase details are required for vehicle #${idx + 1}`;
+    }
+    if (v.vin_corrected && !v.vin_correction_reason?.trim()) {
+      return `VIN correction reason is required for vehicle #${idx + 1}`;
+    }
+    
+    // IRS Business Rule: Category W vehicles must select either agricultural or non-agricultural
+    if (v.category === 'W' && !v.is_agricultural && !v.mileage_5000_or_less) {
+      return `Vehicle #${idx + 1} (Category W) must select either "Agricultural ≤7,500 mi" or "Non-Agricultural ≤5,000 mi"`;
+    }
+  }
+  
+  // IRS Business Rule F2290-017: VIN duplicate validation
+  const vins = formData.vehicles.map(v => v.vin.trim().toUpperCase()).filter(vin => vin);
+  const uniqueVINs = new Set(vins);
+  if (vins.length !== uniqueVINs.size) {
+    return 'Duplicate VINs are not allowed - each vehicle must have a unique VIN';
+  }
+  
+  // IRS Business Rule F2290-008-01: 5000 mile limit requires Category W
+  const has5000MileVehicles = formData.vehicles.some(v => v.mileage_5000_or_less);
+  const hasCategoryW = formData.vehicles.some(v => v.category === 'W');
+  if (has5000MileVehicles && !hasCategoryW) {
+    return 'When 5000 mile limit is used, at least one vehicle must be Category W (Suspended)';
+  }
+  
+  return null;
+};

@@ -32,6 +32,21 @@ class FilingsDocument(Base):
     s3_key = Column(String)
     uploaded_at = Column(DateTime, default=datetime.datetime.utcnow)
 
+class PaymentIntent(Base):
+    """Model for tracking payment intents and their usage"""
+    __tablename__ = 'payment_intents'
+    
+    id = Column(Integer, primary_key=True, index=True)
+    payment_intent_id = Column(String, unique=True, index=True)  # Stripe payment intent ID or dev mode ID
+    user_uid = Column(String, index=True)
+    amount_cents = Column(Integer)  # Amount in cents (e.g., 4500 for $45.00)
+    status = Column(String)  # 'succeeded', 'pending', 'failed'
+    used_for_preview = Column(String, default='false')  # 'true' or 'false' - track if used for preview
+    used_for_submission = Column(String, default='false')  # 'true' or 'false' - track if used for submission
+    submission_id = Column(Integer, nullable=True)  # Link to submission if used for actual submission
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
 def init_database():
     """Initialize database tables"""
     Base.metadata.create_all(bind=engine)

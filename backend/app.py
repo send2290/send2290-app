@@ -18,6 +18,7 @@ from routes import register_routes
 from routes.position_tuner import init_form_positions
 from services.audit_service import init_audit_logging, log_admin_action
 from services.s3_service import get_s3_client
+from services.payment_tracking_service import PaymentTrackingService
 from utils.auth_decorators import verify_firebase_token, verify_admin_token
 from utils.calculations import group_vehicles_by_month
 
@@ -184,7 +185,14 @@ def register_legacy_routes(app):
             return jsonify({}), 200
         
         try:
-            import stripe
+            # Try to import Stripe, but handle gracefully if not available
+            try:
+                import stripe
+                STRIPE_AVAILABLE = True
+            except ImportError:
+                STRIPE_AVAILABLE = False
+                stripe = None
+                
             from services.pdf_service import PDFGenerationService
             
             data = request.get_json() or {}
@@ -197,33 +205,103 @@ def register_legacy_routes(app):
             if not payment_intent_id:
                 return jsonify({"error": "Payment required. Please complete payment before submitting."}), 402
             
-            # Verify payment with Stripe (skip in development if not configured)
-            if Config.FLASK_ENV == 'development' and payment_intent_id == 'dev_mode_fake_client_secret':
+            # Check if we can reuse an existing payment
+            payment_verified = False
+            if PaymentTrackingService.can_reuse_payment(payment_intent_id, request.user['uid']):
+                payment_verified = True
                 enhanced_audit.log_error_event(
                     user_email=request.user.get('email', 'unknown'),
-                    error_type="PAYMENT_BYPASS_DEV_MODE",
-                    error_message="Development mode payment bypass",
+                    error_type="PAYMENT_REUSED_FOR_SUBMISSION",
+                    error_message=f"Payment {payment_intent_id} reused for submission",
                     endpoint="/build-pdf"
                 )
-            elif Config.STRIPE_SECRET_KEY:
-                try:
-                    stripe.api_key = Config.STRIPE_SECRET_KEY
-                    intent = stripe.PaymentIntent.retrieve(payment_intent_id)
-                    
-                    if intent.status != 'succeeded':
-                        return jsonify({"error": "Payment not completed"}), 402
-                    
-                    if intent.metadata.get('user_uid') != request.user['uid']:
-                        return jsonify({"error": "Payment verification failed"}), 402
-                        
-                except stripe.error.StripeError as e:
-                    return jsonify({"error": f"Payment verification failed: {str(e)}"}), 402
             else:
-                return jsonify({"error": "Payment system not configured"}), 402
+                # Verify payment with Stripe (skip in development if not configured)
+                if Config.FLASK_ENV == 'development' and 'dev_mode' in payment_intent_id:
+                    payment_verified = True
+                    
+                    # Record/update the payment
+                    PaymentTrackingService.record_payment_intent(
+                        payment_intent_id, request.user['uid'], status='succeeded'
+                    )
+                    
+                    enhanced_audit.log_error_event(
+                        user_email=request.user.get('email', 'unknown'),
+                        error_type="PAYMENT_BYPASS_DEV_MODE",
+                        error_message="Development mode payment bypass",
+                        endpoint="/build-pdf"
+                    )
+                elif payment_intent_id == 'dev_mode_fake_client_secret':
+                    # Handle development mode payment bypass even in production if Stripe is not configured
+                    payment_verified = True
+                    
+                    # Record the legacy dev mode payment
+                    PaymentTrackingService.record_payment_intent(
+                        payment_intent_id, request.user['uid'], status='succeeded'
+                    )
+                    
+                    enhanced_audit.log_error_event(
+                        user_email=request.user.get('email', 'unknown'),
+                        error_type="PAYMENT_BYPASS_NO_STRIPE",
+                        error_message="Payment bypass due to Stripe not configured",
+                        endpoint="/build-pdf"
+                    )
+                elif Config.STRIPE_SECRET_KEY and STRIPE_AVAILABLE:
+                    try:
+                        stripe.api_key = Config.STRIPE_SECRET_KEY
+                        intent = stripe.PaymentIntent.retrieve(payment_intent_id)
+                        
+                        if intent.status != 'succeeded':
+                            return jsonify({"error": "Payment not completed"}), 402
+                        
+                        if intent.metadata.get('user_uid') != request.user['uid']:
+                            return jsonify({"error": "Payment verification failed"}), 402
+                        
+                        payment_verified = True
+                        
+                        # Record/update the payment
+                        PaymentTrackingService.record_payment_intent(
+                            payment_intent_id, request.user['uid'], status='succeeded'
+                        )
+                        
+                        enhanced_audit.log_error_event(
+                            user_email=request.user.get('email', 'unknown'),
+                            error_type="PAYMENT_VERIFIED_SUBMISSION",
+                            error_message=f"Payment verified for submission: {payment_intent_id}",
+                            endpoint="/build-pdf"
+                        )
+                            
+                    except stripe.error.StripeError as e:
+                        return jsonify({"error": f"Payment verification failed: {str(e)}"}), 402
+                else:
+                    # Stripe not configured - allow submission with audit log
+                    payment_verified = True
+                    
+                    # Record the payment
+                    PaymentTrackingService.record_payment_intent(
+                        payment_intent_id, request.user['uid'], status='succeeded'
+                    )
+                    
+                    enhanced_audit.log_error_event(
+                        user_email=request.user.get('email', 'unknown'),
+                        error_type="PAYMENT_SYSTEM_NOT_CONFIGURED",
+                        error_message="Stripe not configured - allowing free submission",
+                        endpoint="/build-pdf"
+                    )
+            
+            if not payment_verified:
+                return jsonify({"error": "Payment verification failed"}), 402
             
             # Generate PDFs using the service
             pdf_service = PDFGenerationService()
             created_files = pdf_service.generate_pdf_for_submission(data, request.user['uid'])
+            
+            # Mark payment as used for submission after successful generation
+            submission_ids = [file_info.get('filing_id') for file_info in created_files if file_info.get('filing_id')]
+            if submission_ids:
+                PaymentTrackingService.mark_used_for_submission(
+                    payment_intent_id, request.user['uid'], submission_ids[0]
+                )
             
             enhanced_audit.log_error_event(
                 user_email=request.user.get('email', 'unknown'),
@@ -284,7 +362,7 @@ def register_legacy_routes(app):
     @app.route("/preview-pdf", methods=["POST", "OPTIONS"])
     @verify_firebase_token
     def preview_pdf():
-        """Generate PDF preview for form data (no payment required, no database storage)"""
+        """Generate PDF preview for form data (with optional payment support)"""
         if request.method == "OPTIONS":
             return jsonify({"message": "CORS preflight"}), 200
         
@@ -303,16 +381,153 @@ def register_legacy_routes(app):
             if not data.get("vehicles"):
                 return jsonify({"error": "No vehicles provided"}), 400
             
+            # Check if payment is provided (optional for preview)
+            payment_intent_id = data.get("payment_intent_id")
+            payment_verified = False
+            
+            if payment_intent_id:
+                # Check if we can reuse an existing payment
+                if PaymentTrackingService.can_reuse_payment(payment_intent_id, request.user['uid']):
+                    payment_verified = True
+                    
+                    # Mark as used for preview
+                    PaymentTrackingService.mark_used_for_preview(payment_intent_id, request.user['uid'])
+                    
+                    enhanced_audit.log_error_event(
+                        user_email=request.user.get('email', 'unknown'),
+                        error_type="PAYMENT_REUSED_FOR_PREVIEW",
+                        error_message=f"Payment {payment_intent_id} reused for preview",
+                        endpoint="/preview-pdf"
+                    )
+                else:
+                    # Try to import Stripe, but handle gracefully if not available
+                    try:
+                        import stripe
+                        STRIPE_AVAILABLE = True
+                    except ImportError:
+                        STRIPE_AVAILABLE = False
+                        stripe = None
+                    
+                    # Verify payment if provided - fallback to original logic for new payments
+                    if Config.FLASK_ENV == 'development' and 'dev_mode' in payment_intent_id:
+                        payment_verified = True
+                        
+                        # Record/update the payment
+                        PaymentTrackingService.record_payment_intent(
+                            payment_intent_id, request.user['uid'], status='succeeded'
+                        )
+                        PaymentTrackingService.mark_used_for_preview(payment_intent_id, request.user['uid'])
+                        
+                        enhanced_audit.log_error_event(
+                            user_email=request.user.get('email', 'unknown'),
+                            error_type="PAYMENT_BYPASS_DEV_MODE_PREVIEW",
+                            error_message="Development mode payment bypass for preview",
+                            endpoint="/preview-pdf"
+                        )
+                    elif payment_intent_id == 'dev_mode_fake_client_secret':
+                        payment_verified = True
+                        
+                        # Record the legacy dev mode payment
+                        PaymentTrackingService.record_payment_intent(
+                            payment_intent_id, request.user['uid'], status='succeeded'
+                        )
+                        PaymentTrackingService.mark_used_for_preview(payment_intent_id, request.user['uid'])
+                        
+                        enhanced_audit.log_error_event(
+                            user_email=request.user.get('email', 'unknown'),
+                            error_type="PAYMENT_BYPASS_NO_STRIPE_PREVIEW",
+                            error_message="Payment bypass due to Stripe not configured for preview",
+                            endpoint="/preview-pdf"
+                        )
+                    elif Config.STRIPE_SECRET_KEY and STRIPE_AVAILABLE:
+                        try:
+                            stripe.api_key = Config.STRIPE_SECRET_KEY
+                            intent = stripe.PaymentIntent.retrieve(payment_intent_id)
+                            
+                            if intent.status == 'succeeded':
+                                if intent.metadata.get('user_uid') == request.user['uid']:
+                                    payment_verified = True
+                                    
+                                    # Record/update the payment and mark as used for preview
+                                    PaymentTrackingService.record_payment_intent(
+                                        payment_intent_id, request.user['uid'], status='succeeded'
+                                    )
+                                    PaymentTrackingService.mark_used_for_preview(payment_intent_id, request.user['uid'])
+                                    
+                                    enhanced_audit.log_error_event(
+                                        user_email=request.user.get('email', 'unknown'),
+                                        error_type="PAYMENT_VERIFIED_PREVIEW",
+                                        error_message=f"Payment verified for preview: {payment_intent_id}",
+                                        endpoint="/preview-pdf"
+                                    )
+                                else:
+                                    enhanced_audit.log_error_event(
+                                        user_email=request.user.get('email', 'unknown'),
+                                        error_type="PAYMENT_VERIFICATION_FAILED_PREVIEW",
+                                        error_message="Payment verification failed for preview - user mismatch",
+                                        endpoint="/preview-pdf"
+                                    )
+                            else:
+                                enhanced_audit.log_error_event(
+                                    user_email=request.user.get('email', 'unknown'),
+                                    error_type="PAYMENT_NOT_COMPLETED_PREVIEW",
+                                    error_message=f"Payment not completed for preview: {intent.status}",
+                                    endpoint="/preview-pdf"
+                                )
+                        except Exception as e:
+                            enhanced_audit.log_error_event(
+                                user_email=request.user.get('email', 'unknown'),
+                                error_type="PAYMENT_ERROR_PREVIEW",
+                                error_message=f"Payment error during preview: {str(e)}",
+                                endpoint="/preview-pdf"
+                            )
+                    else:
+                        # Stripe not configured but payment was attempted
+                        payment_verified = True
+                        
+                        # Record the payment
+                        PaymentTrackingService.record_payment_intent(
+                            payment_intent_id, request.user['uid'], status='succeeded'
+                        )
+                        PaymentTrackingService.mark_used_for_preview(payment_intent_id, request.user['uid'])
+                        
+                        enhanced_audit.log_error_event(
+                            user_email=request.user.get('email', 'unknown'),
+                            error_type="PAYMENT_SYSTEM_NOT_CONFIGURED_PREVIEW",
+                            error_message="Stripe not configured - allowing free preview",
+                            endpoint="/preview-pdf"
+                        )
+            
             # Generate preview PDFs for all months
             pdf_service = PDFGenerationService()
+            
+            # ALWAYS use preview method - payment only affects access, not storage
+            # Preview should never save to database or S3, regardless of payment
             preview_files = pdf_service.generate_preview_pdfs_all_months(data)
+            
+            if payment_verified:
+                enhanced_audit.log_error_event(
+                    user_email=request.user.get('email', 'unknown'),
+                    error_type="PAID_PREVIEW_SUCCESS",
+                    error_message=f"Paid preview generated for {len(preview_files)} month(s) - NO DATABASE SAVE",
+                    endpoint="/preview-pdf"
+                )
+            else:
+                enhanced_audit.log_error_event(
+                    user_email=request.user.get('email', 'unknown'),
+                    error_type="FREE_PREVIEW_SUCCESS", 
+                    error_message=f"Free preview generated for {len(preview_files)} month(s) - NO DATABASE SAVE",
+                    endpoint="/preview-pdf"
+                )
             
             # If only one file, return it directly
             if len(preview_files) == 1:
+                from flask import send_file
+                filename_prefix = "form2290_paid" if payment_verified else "form2290_preview"
                 return send_file(
                     preview_files[0]['pdf_path'],
                     as_attachment=True,
-                    download_name=f"form2290_preview_{preview_files[0]['month']}.pdf",
+                    download_name=f"{filename_prefix}_{preview_files[0]['month']}.pdf",
                     mimetype='application/pdf'
                 )
             else:
@@ -321,23 +536,32 @@ def register_legacy_routes(app):
                 for file_info in preview_files:
                     month = file_info['month']
                     month_display = f"{month[:4]}-{month[5:]}" if len(month) >= 7 else month
+                    filename_prefix = "form2290_paid" if payment_verified else "form2290_preview"
                     preview_info.append({
                         'month': month,
                         'month_display': month_display,
                         'vehicle_count': file_info['vehicle_count'],
                         'download_url': f"/preview-pdf-by-month/{month}",
-                        'filename': f"form2290_preview_{month_display}_{file_info['vehicle_count']}vehicles.pdf"
+                        'filename': f"{filename_prefix}_{month_display}_{file_info['vehicle_count']}vehicles.pdf",
+                        'paid': payment_verified
                     })
                 
                 return jsonify({
                     "success": True,
                     "multiple_files": True,
-                    "message": f"Preview generated for {len(preview_files)} month(s)",
-                    "files": preview_info
+                    "message": f"{'Paid' if payment_verified else 'Free'} preview generated for {len(preview_files)} month(s)",
+                    "files": preview_info,
+                    "payment_verified": payment_verified
                 }), 200
             
         except Exception as e:
             print(f"Preview PDF generation error: {e}")
+            enhanced_audit.log_error_event(
+                user_email=request.user.get('email', 'unknown'),
+                error_type="PREVIEW_ERROR",
+                error_message=str(e),
+                endpoint="/preview-pdf"
+            )
             return jsonify({"error": f"Preview generation failed: {str(e)}"}), 500
     
     @app.route("/preview-pdf-by-month/<month>", methods=["GET"])
@@ -346,6 +570,7 @@ def register_legacy_routes(app):
         """Download a specific month's preview PDF"""
         try:
             import os
+            from flask import send_file
             
             # Look for the preview file
             out_dir = os.path.join(os.path.dirname(__file__), "output")

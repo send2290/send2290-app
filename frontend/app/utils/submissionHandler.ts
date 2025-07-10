@@ -129,7 +129,12 @@ export const createSubmissionHandler = (
         }
       };
       
-      const token = await auth.currentUser!.getIdToken();
+      // Check if user is authenticated before getting token
+      if (!auth.currentUser) {
+        throw new Error("Authentication required. Please refresh the page and try again.");
+      }
+      
+      const token = await auth.currentUser.getIdToken();
       
       const response = await fetch(`${API_BASE}/build-pdf`, {
         method: "POST",
@@ -147,10 +152,16 @@ export const createSubmissionHandler = (
         let errorMsg = response.statusText;
         try {
           const errorData = await response.json();
-          errorMsg = errorData.error || errorMsg;
+          errorMsg = errorData.message || errorData.error || errorMsg;
         } catch {
           // Non-JSON response, use statusText
         }
+        
+        // Handle specific authorization errors
+        if (response.status === 401) {
+          throw new Error(errorMsg || "Authentication required. Please refresh the page and try again.");
+        }
+        
         alert(`Submission failed: ${errorMsg}`);
         return;
       }

@@ -358,7 +358,6 @@ export const AdminSubmissions: React.FC<AdminSubmissionsProps> = ({ API_BASE }) 
                     <thead style={{ background: '#e9ecef', position: 'sticky', top: 0 }}>
                       <tr>
                         <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid #ddd' }}>ID</th>
-                        <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid #ddd' }}>User ID</th>
                         <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid #ddd' }}>User Email</th>
                         <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid #ddd' }}>Business</th>
                         <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid #ddd' }}>EIN</th>
@@ -373,22 +372,6 @@ export const AdminSubmissions: React.FC<AdminSubmissionsProps> = ({ API_BASE }) 
                       {submissions.map((submission) => (
                         <tr key={submission.id} style={{ borderBottom: '1px solid #eee' }}>
                           <td style={{ padding: '8px' }}>{submission.id}</td>
-                          <td style={{ padding: '8px', fontFamily: 'monospace', fontSize: '0.8rem' }}>
-                            <button
-                              onClick={() => fetchUserDetails(submission.user_uid)}
-                              style={{
-                                background: 'none',
-                                border: 'none',
-                                color: '#6c757d',
-                                textDecoration: 'underline',
-                                cursor: 'pointer',
-                                fontSize: '0.8rem',
-                                fontFamily: 'monospace'
-                              }}
-                            >
-                              {submission.user_uid.substring(0, 8)}...
-                            </button>
-                          </td>
                           <td style={{ padding: '8px' }}>
                             <button
                               onClick={() => fetchUserDetails(submission.user_email)}
@@ -413,7 +396,7 @@ export const AdminSubmissions: React.FC<AdminSubmissionsProps> = ({ API_BASE }) 
                           <td style={{ padding: '8px' }}>
                             <div style={{ display: 'flex', gap: '4px' }}>
                               <button
-                                onClick={() => downloadFile(Number(submission.id), 'pdf')}
+                                onClick={() => downloadFile(parseInt(submission.id), 'pdf')}
                                 style={{
                                   padding: '4px 8px',
                                   backgroundColor: '#dc3545',
@@ -427,7 +410,7 @@ export const AdminSubmissions: React.FC<AdminSubmissionsProps> = ({ API_BASE }) 
                                 📄 PDF
                               </button>
                               <button
-                                onClick={() => downloadFile(Number(submission.id), 'xml')}
+                                onClick={() => downloadFile(parseInt(submission.id), 'xml')}
                                 style={{
                                   padding: '4px 8px',
                                   backgroundColor: '#6c757d',

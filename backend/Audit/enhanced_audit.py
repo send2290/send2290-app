@@ -12,12 +12,13 @@ class IRS2290AuditLogger:
         """
         self.environment = environment
         
-        # Simple file naming
+        # Simple file naming with absolute paths
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # Get backend directory
         if environment == 'production':
-            log_filename = 'Audit/productionaudit.log'
+            log_filename = os.path.join(base_dir, 'Audit', 'productionaudit.log')
             logger_name = 'PRODUCTION_AUDIT'
         else:
-            log_filename = 'Audit/localaudit.log'
+            log_filename = os.path.join(base_dir, 'Audit', 'localaudit.log')
             logger_name = 'LOCAL_AUDIT'
             
         self.logger = logging.getLogger(logger_name)

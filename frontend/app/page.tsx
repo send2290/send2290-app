@@ -5,7 +5,7 @@ import { auth } from '../lib/firebase';
 import LoginModal from './LoginModal';
 import { useForm2290 } from './hooks/useForm2290';
 import { createFormHandler } from './utils/formHandlers';
-import { calculateDisposalCredit } from './utils/formUtils';
+import { calculateDisposalCredit, validateMainPageBeforeProceeding } from './utils/formUtils';
 import { BusinessInfo } from './components/BusinessInfo';
 import { ReturnFlags } from './components/ReturnFlags';
 import { OfficerInfo } from './components/OfficerInfo';
@@ -127,78 +127,11 @@ export default function Form2290() {
 
   // Handle proceeding to filing page
   const handleProceedToFiling = () => {
-    // Comprehensive validation before proceeding to filing
-    const validationErrors: string[] = [];
+    // Use the main page validation function that only validates fields available on this page
+    const validationError = validateMainPageBeforeProceeding(formData);
     
-    // Business information validation
-    if (!formData.business_name.trim()) {
-      validationErrors.push('Business Name is required');
-    }
-    
-    if (!/^\d{2}-\d{7}$/.test(formData.ein)) {
-      validationErrors.push('EIN must be 9 digits in format XX-XXXXXXX');
-    }
-    
-    if (!formData.address.trim()) {
-      validationErrors.push('Business Address is required');
-    }
-    
-    if (!formData.city.trim()) {
-      validationErrors.push('City is required');
-    }
-    
-    if (!formData.state.trim() || formData.state.length !== 2) {
-      validationErrors.push('State must be 2 letters');
-    }
-    
-    if (!/^\d{5}$/.test(formData.zip)) {
-      validationErrors.push('ZIP code must be 5 digits');
-    }
-    
-    // Officer information validation
-    if (!formData.officer_name.trim()) {
-      validationErrors.push('Officer name is required');
-    }
-    
-    if (!formData.officer_title.trim()) {
-      validationErrors.push('Officer title is required (e.g., President, Owner, Manager)');
-    }
-    
-    if (!/^\d{3}-?\d{2}-?\d{4}$/.test(formData.officer_ssn)) {
-      validationErrors.push('Officer SSN must be in format XXX-XX-XXXX');
-    }
-    
-    if (!/^\d{5}$/.test(formData.taxpayer_pin)) {
-      validationErrors.push('Taxpayer PIN must be exactly 5 digits');
-    }
-    
-    // Vehicle validation
-    if (formData.vehicles.length === 0) {
-      validationErrors.push('At least one vehicle is required');
-    } else {
-      // Validate each vehicle
-      formData.vehicles.forEach((vehicle, index) => {
-        if (!vehicle.vin.trim()) {
-          validationErrors.push(`Vehicle ${index + 1}: VIN is required`);
-        } else if (vehicle.vin.length < 17) {
-          validationErrors.push(`Vehicle ${index + 1}: VIN must be 17 characters`);
-        }
-        
-        if (!vehicle.category) {
-          validationErrors.push(`Vehicle ${index + 1}: Weight category is required`);
-        }
-        
-        if (!vehicle.used_month) {
-          validationErrors.push(`Vehicle ${index + 1}: First use month is required`);
-        }
-      });
-    }
-    
-    // Show validation errors if any
-    if (validationErrors.length > 0) {
-      const errorMessage = 'Please fix the following issues before proceeding:\n\n' + 
-        validationErrors.map((error, index) => `${index + 1}. ${error}`).join('\n');
-      alert(errorMessage);
+    if (validationError) {
+      alert(`Please fix the following issue before proceeding:\n\n${validationError}`);
       return;
     }
     
