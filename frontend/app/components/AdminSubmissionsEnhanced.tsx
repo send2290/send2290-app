@@ -396,7 +396,7 @@ export const AdminSubmissions: React.FC<AdminSubmissionsProps> = ({ API_BASE }) 
                           <td style={{ padding: '8px' }}>
                             <div style={{ display: 'flex', gap: '4px' }}>
                               <button
-                                onClick={() => downloadFile(parseInt(submission.id), 'pdf')}
+                                onClick={() => downloadFile(submission.id, 'pdf')}
                                 style={{
                                   padding: '4px 8px',
                                   backgroundColor: '#dc3545',
@@ -410,7 +410,7 @@ export const AdminSubmissions: React.FC<AdminSubmissionsProps> = ({ API_BASE }) 
                                 📄 PDF
                               </button>
                               <button
-                                onClick={() => downloadFile(parseInt(submission.id), 'xml')}
+                                onClick={() => downloadFile(submission.id, 'xml')}
                                 style={{
                                   padding: '4px 8px',
                                   backgroundColor: '#6c757d',
