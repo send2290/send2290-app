@@ -25,6 +25,7 @@ instance/
 
 # IDE/editor folders
 .vscode/
+.history/
 
 # Admin test scripts (contain sensitive tokens)
 backend/test_view.py
@@ -194,5 +195,10 @@ SECURITY_SETUP_COMPLETE.md
 backend/setup_aws_db.py
 backend/clear_database.py
 backend/check_db.py
+
+# Development utility scripts
+backend/audit_status_report.py
+backend/switch_env.py
+backend/sync_databases.py
 
 # XML builder (contains business logic)
