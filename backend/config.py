@@ -1,17 +1,21 @@
 import os
 from dotenv import load_dotenv
 
-load_dotenv()
+# Load environment variables from both root and backend .env files
+# Root .env first (for NODE_ENV), then backend .env (for other settings)
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '.env'))  # Root .env
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '.env'))        # Backend .env
 
 class Config:
     """Application configuration class"""
     
-    # Flask Configuration
-    FLASK_ENV = os.getenv("FLASK_ENV", "development")
+    # Environment Configuration - Use NODE_ENV from root .env as primary control
+    NODE_ENV = os.getenv("NODE_ENV", "development")
+    FLASK_ENV = NODE_ENV  # Keep FLASK_ENV for compatibility, but derive from NODE_ENV
     SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key")
     
-    # Database Configuration
-    DATABASE_URL = ("sqlite:///./send2290.db" if FLASK_ENV == "development" 
+    # Database Configuration - Switch based on NODE_ENV
+    DATABASE_URL = ("sqlite:///./send2290.db" if NODE_ENV == "development" 
                    else os.getenv('DATABASE_URL'))
     
     # AWS Configuration

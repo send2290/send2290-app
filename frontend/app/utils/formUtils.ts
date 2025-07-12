@@ -87,7 +87,6 @@ export const validateBeforeSubmit = (
   
   // Validate each month's credits don't exceed its tax
   for (const [month, data] of monthlyTaxAndCredits.entries()) {
-    console.log(`🔍 Month ${formatMonth(month)}: Tax=$${data.tax.toFixed(2)}, Credits=$${data.credits.toFixed(2)}`);
     if (data.credits > data.tax) {
       const monthStr = formatMonth(month);
       return `Disposal credits for ${monthStr} ($${data.credits.toFixed(2)}) cannot exceed the total tax for that month ($${data.tax.toFixed(2)})`;
@@ -443,36 +442,20 @@ export const calculateDisposalCredit = (vehicle: Vehicle, disposalDate: string):
     
     lookupKey = monthsToKeyMap[monthsOfUse];
     
-    // Debug logging
-    console.log(`🔍 Disposal Credit Debug for Vehicle ${vehicle.vin}:`);
-    console.log(`  Category: ${vehicle.category}, Logging: ${isLogging}`);
-    console.log(`  First use month: ${firstUseMonth}, Disposal month: ${disposalMonth}`);
-    console.log(`  Months of use: ${monthsOfUse}`);
-    console.log(`  monthsToKeyMap:`, monthsToKeyMap);
-    
-    lookupKey = monthsToKeyMap[monthsOfUse];
-    console.log(`  Lookup key for ${monthsOfUse} months: ${lookupKey}`);
-    
     if (lookupKey !== undefined) {
       if (isLogging) {
         partialPeriodTax = partialPeriodTaxLogging[vehicle.category]?.[lookupKey] || 0;
       } else {
         partialPeriodTax = partialPeriodTaxRegular[vehicle.category]?.[lookupKey] || 0;
       }
-      console.log(`  Partial-period tax: $${partialPeriodTax}`);
     } else {
       // Fallback for edge cases
       partialPeriodTax = fullPeriodTax;
-      console.log(`  Fallback to full-period tax: $${partialPeriodTax}`);
     }
   }
 
   // Step 4: Calculate credit (Line 1 - Line 2)
   const credit = Math.max(0, fullPeriodTax - partialPeriodTax);
-  
-  // Final debug summary
-  console.log(`  Full-period tax: $${fullPeriodTax}`);
-  console.log(`  Credit: $${credit}`);
   
   return credit;
 };

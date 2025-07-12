@@ -24,7 +24,7 @@ export const TaxComputationTable: React.FC<TaxComputationTableProps> = ({
   totalDisposalCredits
 }) => {
   return (
-    <div style={{ 
+    <div className="tax-computation-table" style={{ 
       background: '#f9f9f9', 
       border: '2px solid #333', 
       borderRadius: '8px', 

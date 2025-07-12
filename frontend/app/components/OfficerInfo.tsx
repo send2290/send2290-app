@@ -11,14 +11,15 @@ export const OfficerInfo: React.FC<OfficerInfoProps> = ({ formData, handleChange
     display: 'flex',
     alignItems: 'center',
     gap: 4,
-    fontSize: '0.9rem'
+    fontSize: '0.8rem',
+    fontWeight: '500'
   } as React.CSSProperties;
 
   return (
     <>
       {/* Business Officer Information & Tax Credits */}
-      <h2 style={{ marginTop: 20 }}>Business Officer Information</h2>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      <h2 style={{ marginTop: 12 }}>👤 Business Officer Information</h2>
+      <div style={{ display: 'grid', gap: '6px', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
         <input 
           name="officer_name" 
           placeholder="Officer Name (Required for signing)" 

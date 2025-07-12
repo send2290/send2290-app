@@ -20,15 +20,15 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
     display: 'flex',
     alignItems: 'center',
     gap: 4,
-    fontSize: '0.9rem'
+    fontSize: '0.8rem'
   } as React.CSSProperties;
 
   const btnSmall = {
-    padding: '6px 12px',
+    padding: '4px 8px',
     border: 'none',
-    borderRadius: 4,
+    borderRadius: 3,
     cursor: 'pointer',
-    fontSize: '0.9rem'
+    fontSize: '0.8rem'
   } as React.CSSProperties;
 
   const todayStr = new Date().toISOString().split('T')[0];
@@ -36,23 +36,23 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
   return (
     <>
       {/* Vehicles */}
-      <h2 style={{ marginTop: 20 }}>Vehicles</h2>
+      <h2 style={{ marginTop: 12 }}>Vehicles</h2>
       {formData.vehicles.map((v, i) => (
         <div key={i} className="vehicle-row" style={{ 
           display: 'flex', 
-          gap: 8, 
+          gap: 6, 
           alignItems: 'flex-start', 
-          marginBottom: 16,
-          padding: 12,
+          marginBottom: 8,
+          padding: 8,
           border: '1px solid #ddd',
-          borderRadius: 4,
+          borderRadius: 3,
           backgroundColor: v.is_suspended || v.is_agricultural ? '#f8f9fa' : 'white',
           flexWrap: 'wrap'
         }}>
           {/* Basic vehicle info - top row */}
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', width: '100%', marginBottom: 8 }}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', width: '100%', marginBottom: 6 }}>
             <input
-              style={{ width: 180 }}
+              style={{ minWidth: 160, height: 32, boxSizing: 'border-box', fontSize: '0.75rem', flex: 1 }}
               type="text"
               name={`vehicle_${i}_vin`}
               placeholder="VIN"
@@ -66,7 +66,7 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
               name={`vehicle_${i}_used_month`}
               value={v.used_month}
               onChange={handleChange}
-              style={{ minWidth: 150 }}
+              style={{ minWidth: 130, height: 38, boxSizing: 'border-box', fontSize: '0.75rem', padding: '8px 8px', lineHeight: 1.4 }}
             >
               <option value="">Select Month</option>
               {months.map((m) => (
@@ -77,7 +77,7 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
               name={`vehicle_${i}_category`}
               value={v.category}
               onChange={handleChange}
-              style={{ minWidth: 180 }}
+              style={{ minWidth: 160, height: 38, boxSizing: 'border-box', fontSize: '0.75rem', padding: '8px 8px', lineHeight: 1.4 }}
             >
               <option value="">Select Weight</option>
               {weightCategories.map((w) => (
@@ -94,7 +94,7 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
           </div>
 
           {/* Checkboxes - second row */}
-          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', width: '100%', marginBottom: 8 }}>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', width: '100%', marginBottom: 6 }}>
             <label style={{ ...labelSmall, cursor: 'pointer' }}>
               <input 
                 type="checkbox" 
@@ -197,7 +197,7 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
 
             {/* Disposal details */}
             {v.disposal_date && (
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8, padding: 8, backgroundColor: '#fff3cd', borderRadius: 4 }}>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6, padding: 6, backgroundColor: '#fff3cd', borderRadius: 3 }}>
                 <input
                   type="date"
                   name={`vehicle_${i}_disposal_date`}
@@ -216,11 +216,13 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
                     handleChange(syntheticEvent);
                   }}
                   placeholder="Disposal Date"
+                  style={{ fontSize: '0.75rem', height: 32, boxSizing: 'border-box' }}
                 />
                 <select
                   name={`vehicle_${i}_disposal_reason`}
                   value={v.disposal_reason || ''}
                   onChange={handleChange}
+                  style={{ fontSize: '0.75rem', height: 38, boxSizing: 'border-box', minWidth: 140, padding: '8px 8px', lineHeight: 1.4 }}
                 >
                   <option value="">Disposal Reason</option>
                   <option value="Sold">Sold</option>
@@ -238,6 +240,7 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
                   value={v.disposal_amount || ''}
                   onChange={handleChange}
                   onWheel={(e) => e.currentTarget.blur()}
+                  style={{ fontSize: '0.75rem', height: 32, boxSizing: 'border-box' }}
                 />
                 
                 {/* Dynamic Credit Display */}
@@ -284,6 +287,7 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
                   name={`vehicle_${i}_tgw_increase_month`}
                   value={v.tgw_increase_month || ''}
                   onChange={handleChange}
+                  style={{ fontSize: '0.75rem', height: 38, boxSizing: 'border-box', padding: '8px 8px', lineHeight: 1.4 }}
                 >
                   <option value="">Month Weight Increased</option>
                   {months.map((m) => (
@@ -294,6 +298,7 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
                   name={`vehicle_${i}_tgw_previous_category`}
                   value={v.tgw_previous_category || ''}
                   onChange={handleChange}
+                  style={{ fontSize: '0.75rem', height: 38, boxSizing: 'border-box', padding: '8px 8px', lineHeight: 1.4 }}
                 >
                   <option value="">Previous Weight Category</option>
                   {weightCategories.filter(w => w.value !== 'W').map((w) => (
@@ -311,20 +316,30 @@ export const VehicleManagement: React.FC<VehicleManagementProps> = ({
                   placeholder="Explain the VIN correction..."
                   value={v.vin_correction_reason || ''}
                   onChange={handleChange}
-                  style={{ minWidth: '300px' }}
+                  style={{ minWidth: '300px', fontSize: '0.75rem', height: 32, boxSizing: 'border-box' }}
                 />
               </div>
             )}
           </div>
         </div>
       ))}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, marginTop: 12 }}>
         <button
           type="button"
-          style={{ ...btnSmall, backgroundColor: '#1565c0', color: '#fff' }}
+          style={{ 
+            ...btnSmall, 
+            backgroundColor: '#28a745', 
+            color: '#fff',
+            fontSize: '0.8rem',
+            fontWeight: '600',
+            padding: '8px 12px',
+            borderRadius: '4px',
+            boxShadow: '0 1px 2px rgba(40, 167, 69, 0.2)',
+            transition: 'all 0.2s ease-in-out'
+          }}
           onClick={addVehicle}
         >
-          + Add Vehicle
+          ➕ Add Vehicle
         </button>
       </div>
     </>

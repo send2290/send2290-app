@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { auth } from '../../lib/firebase';
 import { AdminSubmission, AdminSubmissionFile } from '../types/form';
 import { formatDate, formatMonth } from '../utils/formUtils';
@@ -49,11 +49,15 @@ export const AdminSubmissions: React.FC<AdminSubmissionsProps> = ({ API_BASE }) 
   
   // General state
   const [loading, setLoading] = useState(false);
-  const [showAdmin, setShowAdmin] = useState(false);
   
   // Filters
   const [userFilter, setUserFilter] = useState('');
   const [emailFilter, setEmailFilter] = useState('');
+
+  // Load submissions on component mount
+  useEffect(() => {
+    fetchSubmissions();
+  }, []);
 
   const fetchSubmissions = async () => {
     setLoading(true);
@@ -199,38 +203,19 @@ export const AdminSubmissions: React.FC<AdminSubmissionsProps> = ({ API_BASE }) 
       padding: '16px', 
       marginBottom: '20px' 
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <h3 style={{ color: '#dc3545', margin: 0 }}>
           🔐 Enhanced Admin Panel
         </h3>
-        <button
-          onClick={() => {
-            setShowAdmin(!showAdmin);
-            if (!showAdmin && activeTab === 'submissions' && submissions.length === 0) {
-              fetchSubmissions();
-            }
-          }}
-          style={{
-            padding: '6px 12px',
-            backgroundColor: '#dc3545',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer'
-          }}
-        >
-          {showAdmin ? 'Hide' : 'Show'} Admin Panel
-        </button>
       </div>
 
-      {showAdmin && (
-        <div style={{ marginTop: '16px' }}>
-          {/* Tab Navigation */}
-          <div style={{ 
-            display: 'flex', 
-            marginBottom: '20px', 
-            borderBottom: '2px solid #dee2e6' 
-          }}>
+      <div style={{ marginTop: '16px' }}>
+        {/* Tab Navigation */}
+        <div style={{ 
+          display: 'flex', 
+          marginBottom: '20px', 
+          borderBottom: '2px solid #dee2e6' 
+        }}>
             {[
               { key: 'submissions', label: '📋 Submissions', count: submissions.length },
               { key: 'payments', label: '💳 Payment History', count: payments.length },
@@ -751,7 +736,6 @@ export const AdminSubmissions: React.FC<AdminSubmissionsProps> = ({ API_BASE }) 
             </div>
           )}
         </div>
-      )}
     </div>
   );
 };

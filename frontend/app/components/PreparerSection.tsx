@@ -12,14 +12,15 @@ export const PreparerSection: React.FC<PreparerSectionProps> = ({ formData, hand
     display: 'flex',
     alignItems: 'center',
     gap: 4,
-    fontSize: '0.9rem'
+    fontSize: '0.8rem',
+    fontWeight: '500'
   } as React.CSSProperties;
 
   return (
     <>
       {/* Paid Preparer */}
-      <h2 style={{ marginTop: 20 }}>
-        <label style={{ ...labelSmall, cursor: 'pointer' }}>
+      <h2 style={{ marginTop: 12 }}>
+        <label style={{ ...labelSmall, cursor: 'pointer', fontSize: '1.1rem' }}>
           <input
             type="checkbox"
             name="include_preparer"
@@ -31,14 +32,28 @@ export const PreparerSection: React.FC<PreparerSectionProps> = ({ formData, hand
         </label>
       </h2>
       {formData.include_preparer && (
-        <>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ 
+          marginTop: '8px', 
+          padding: '8px', 
+          backgroundColor: '#f8f9fa', 
+          borderRadius: '4px',
+          border: '1px solid #e1e8ed'
+        }}>
+          <div style={{ display: 'grid', gap: '6px', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', marginBottom: '6px' }}>
             <input name="preparer_name" placeholder="Preparer Name" value={formData.preparer_name} onChange={handleChange} required />
             <input name="preparer_ptin" placeholder="PTIN" value={formData.preparer_ptin} onChange={handleChange} required />
             <input type="date" name="date_prepared" max={todayStr} value={formData.date_prepared} onChange={handleChange} required />
           </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 8 }}>
-            <label style={labelSmall}>
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+            <label style={{
+              ...labelSmall,
+              cursor: 'pointer',
+              padding: '4px 6px',
+              backgroundColor: formData.preparer_self_employed ? '#e3f2fd' : 'white',
+              border: '1px solid #e1e8ed',
+              borderRadius: '3px',
+              borderColor: formData.preparer_self_employed ? '#007bff' : '#e1e8ed'
+            }}>
               <input
                 type="checkbox"
                 name="preparer_self_employed"
@@ -48,7 +63,7 @@ export const PreparerSection: React.FC<PreparerSectionProps> = ({ formData, hand
               <span style={{ cursor: 'pointer' }}>Self Employed</span>
             </label>
           </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+          <div style={{ display: 'grid', gap: '6px', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', marginTop: '6px' }}>
             <input name="preparer_firm_name" placeholder="Firm Name" value={formData.preparer_firm_name} onChange={handleChange} required />
             <input
               name="preparer_firm_ein"
@@ -94,12 +109,12 @@ export const PreparerSection: React.FC<PreparerSectionProps> = ({ formData, hand
               required
             />
           </div>
-        </>
+        </div>
       )}
 
       {/* Third-Party Designee / Consent */}
-      <h2 style={{ marginTop: 20 }}>
-        <label style={{ ...labelSmall, cursor: 'pointer' }}>
+      <h2 style={{ marginTop: 12 }}>
+        <label style={{ ...labelSmall, cursor: 'pointer', fontSize: '1.1rem' }}>
           <input 
             type="checkbox" 
             name="consent_to_disclose" 
@@ -111,20 +126,28 @@ export const PreparerSection: React.FC<PreparerSectionProps> = ({ formData, hand
         </label>
       </h2>
       {formData.consent_to_disclose && (
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <input name="designee_name" placeholder="Designee Name" value={formData.designee_name} onChange={handleChange} required />
-          <input
-            name="designee_phone"
-            placeholder="Designee Phone (10 digits)"
-            pattern="\d{10}"
-            maxLength={10}
-            inputMode="numeric"
-            title="10 digits"
-            value={formData.designee_phone}
-            onChange={handleChange}
-            required
-          />
-          <input name="designee_pin" placeholder="Designee PIN" value={formData.designee_pin} onChange={handleChange} required />
+        <div style={{ 
+          marginTop: '8px', 
+          padding: '8px', 
+          backgroundColor: '#f8f9fa', 
+          borderRadius: '4px',
+          border: '1px solid #e1e8ed'
+        }}>
+          <div style={{ display: 'grid', gap: '6px', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
+            <input name="designee_name" placeholder="Designee Name" value={formData.designee_name} onChange={handleChange} required />
+            <input
+              name="designee_phone"
+              placeholder="Designee Phone (10 digits)"
+              pattern="\d{10}"
+              maxLength={10}
+              inputMode="numeric"
+              title="10 digits"
+              value={formData.designee_phone}
+              onChange={handleChange}
+              required
+            />
+            <input name="designee_pin" placeholder="Designee PIN" value={formData.designee_pin} onChange={handleChange} required />
+          </div>
         </div>
       )}
     </>

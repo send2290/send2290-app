@@ -3,6 +3,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { auth } from '../../lib/firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
+import { checkUserExists, createUserAndSendPassword } from '../../lib/authUtils';
 import ReCaptchaComponent, { ReCaptchaRef } from '../components/ReCaptcha';
 import PaymentModal from '../components/PaymentModal';
 import { TaxComputationTable } from '../components/TaxComputationTable';
@@ -18,6 +19,9 @@ export default function FilePageContent() {
   // Authentication state
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  
+  // Check if current user is admin
+  const isAdmin = user?.email === process.env.NEXT_PUBLIC_ADMIN_EMAIL;
   
   // Set up API base URL
   const isBrowser = typeof window !== 'undefined';
@@ -107,13 +111,10 @@ export default function FilePageContent() {
         
         // Recalculate disposal credits from vehicle data
         if (data.formData && data.formData.vehicles) {
-          console.log('All vehicles from localStorage:', data.formData.vehicles);
-          
           // First, ensure all vehicles with disposal dates have calculated disposal_credit
           const vehiclesWithCredits = data.formData.vehicles.map((vehicle: any) => {
             if (vehicle.disposal_date && !vehicle.disposal_credit) {
               const credit = calculateDisposalCredit(vehicle, vehicle.disposal_date);
-              console.log(`Recalculating disposal credit for vehicle ${vehicle.vin}: $${credit}`);
               return { ...vehicle, disposal_credit: credit };
             }
             return vehicle;
@@ -123,17 +124,8 @@ export default function FilePageContent() {
           setFormData(prev => prev ? { ...prev, vehicles: vehiclesWithCredits } : prev);
           
           const calculatedDisposalCredits = vehiclesWithCredits.reduce((sum: number, vehicle: any) => {
-            console.log('Vehicle disposal credit check:', {
-              vin: vehicle.vin,
-              disposal_credit: vehicle.disposal_credit,
-              disposal_date: vehicle.disposal_date,
-              category: vehicle.category,
-              used_month: vehicle.used_month
-            });
             return sum + (vehicle.disposal_credit || 0);
           }, 0);
-          console.log('Total calculated disposal credits:', calculatedDisposalCredits);
-          console.log('Stored totalDisposalCredits from localStorage:', data.totalDisposalCredits);
           
           // Use the higher of calculated vs stored to ensure we don't lose credits
           const finalDisposalCredits = Math.max(calculatedDisposalCredits, data.totalDisposalCredits || 0);
@@ -147,7 +139,6 @@ export default function FilePageContent() {
           };
           localStorage.setItem('form2290Data', JSON.stringify(updatedDataToSave));
         } else {
-          console.log('No vehicle data found, using stored value:', data.totalDisposalCredits);
           setTotalDisposalCredits(data.totalDisposalCredits || 0);
         }
       } else {
@@ -367,8 +358,16 @@ export default function FilePageContent() {
     // Simple validation for filing page (only signature and payment fields)
     let validationErrorMsg = '';
     
+    // Validate email if user is not logged in
+    if (!user) {
+      if (!formData.email || !formData.email.trim()) {
+        validationErrorMsg = 'Email address is required';
+      } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) {
+        validationErrorMsg = 'Please enter a valid email address';
+      }
+    }
     // Validate signature and printed name
-    if (!formData.signature.trim()) {
+    else if (!formData.signature.trim()) {
       validationErrorMsg = 'Signature is required';
     } else if (!formData.printed_name.trim()) {
       validationErrorMsg = 'Printed name is required';
@@ -487,155 +486,165 @@ export default function FilePageContent() {
 
   return (
     <>
-      <style>{`
-        .file-container {
-          max-width: 900px;
-          width: 100%;
-          margin: 0 auto;
-          padding: 20px;
-          font-family: 'Segoe UI', sans-serif;
-        }
-        
-        .summary-section {
-          background: #f8f9fa;
-          border: 2px solid #007bff;
-          border-radius: 8px;
-          padding: 20px;
-          margin: 20px 0;
-        }
-        
-        .fee-breakdown {
-          background: white;
-          border: 1px solid #ddd;
-          border-radius: 6px;
-          padding: 16px;
-          margin: 16px 0;
-        }
-        
-        .fee-line {
-          display: flex;
-          justify-content: space-between;
-          padding: 8px 0;
-          border-bottom: 1px solid #eee;
-        }
-        
-        .fee-line:last-child {
-          border-bottom: none;
-          font-weight: bold;
-          font-size: 1.1rem;
-          color: #007bff;
-        }
-        
-        .back-button {
-          background: #6c757d;
-          color: white;
-          border: none;
-          padding: 10px 20px;
-          border-radius: 4px;
-          cursor: pointer;
-          margin-right: 12px;
-        }
-        
-        .back-button:hover {
-          background: #5a6268;
-        }
-        
-        @media (max-width: 600px) {
-          .file-container {
-            padding: 8px;
-          }
-          
-          .fee-line {
-            flex-direction: column;
-            gap: 4px;
-          }
-          
-          .submit-actions {
-            flex-direction: column;
-          }
-          
-          .submit-actions button {
-            min-width: unset !important;
-            width: 100%;
-          }
-        }
-      `}</style>
-      
       <div className="file-container">
-        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '20px' }}>
+        <div style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          marginBottom: '20px',
+          padding: '16px',
+          background: 'linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%)',
+          borderRadius: '8px',
+          color: '#495057',
+          boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)',
+          border: '1px solid #dee2e6'
+        }}>
           <button 
             type="button" 
             className="back-button"
             onClick={handleBackToForm}
+            style={{
+              padding: '8px 14px',
+              background: '#6c757d',
+              border: '1px solid #5a6268',
+              borderRadius: '6px',
+              color: 'white',
+              cursor: 'pointer',
+              fontSize: '0.9rem',
+              fontWeight: '500',
+              transition: 'all 0.2s ease'
+            }}
+            onMouseOver={(e) => {
+              e.currentTarget.style.background = '#5a6268';
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.background = '#6c757d';
+            }}
           >
             ← Back to Form
           </button>
-          <h1 style={{ margin: 0, flex: 1, textAlign: 'center' }}>
-            Review & File Form 2290
+          <h1 style={{ 
+            margin: '0', 
+            flex: '1', 
+            textAlign: 'center',
+            fontSize: '1.5rem',
+            fontWeight: '600',
+            color: '#495057'
+          }}>
+            📋 Review & File Form 2290
           </h1>
         </div>
         
-        {/* Tax Computation Table */}
-        <TaxComputationTable 
-          categoryData={categoryData}
-          grandTotals={grandTotals}
-          totalVINs={totalVINs}
-          formData={formData}
-          suspendedLoggingCount={suspendedLoggingCount}
-          suspendedNonLoggingCount={suspendedNonLoggingCount}
-          taxableVehiclesCount={taxableVehiclesCount}
-          totalDisposalCredits={totalDisposalCredits}
-        />
+        {/* Tax Computation Table - Only show for admin */}
+        {isAdmin && (
+          <TaxComputationTable 
+            categoryData={categoryData}
+            grandTotals={grandTotals}
+            totalVINs={totalVINs}
+            formData={formData}
+            suspendedLoggingCount={suspendedLoggingCount}
+            suspendedNonLoggingCount={suspendedNonLoggingCount}
+            taxableVehiclesCount={taxableVehiclesCount}
+            totalDisposalCredits={totalDisposalCredits}
+          />
+        )}
         
         {/* Filing Fee Summary */}
-        <div className="summary-section">
-          <h3 style={{ margin: '0 0 16px 0', textAlign: 'center', color: '#007bff' }}>
-            Filing Summary
+        <div className="summary-section" style={{ 
+          background: 'linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%)',
+          padding: '16px',
+          borderRadius: '8px',
+          marginBottom: '16px',
+          border: '1px solid #dee2e6',
+          boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)'
+        }}>
+          <h3 style={{ 
+            margin: '0 0 12px 0', 
+            textAlign: 'center', 
+            color: '#495057',
+            fontSize: '1.25rem',
+            fontWeight: '600'
+          }}>
+            📊 Filing Summary
           </h3>
           
-          <div className="fee-breakdown">
-            <div className="fee-line">
-              <span>Tax Due:</span>
-              <span>${totalTax.toFixed(2)}</span>
+          <div className="fee-breakdown" style={{ 
+            display: 'grid',
+            gap: '8px',
+            fontSize: '0.9rem'
+          }}>
+            <div className="fee-line" style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between',
+              padding: '6px 0',
+              borderBottom: '1px solid rgba(73, 80, 87, 0.1)'
+            }}>
+              <span style={{ fontWeight: '500' }}>Total Vehicles:</span>
+              <span style={{ fontWeight: '600', color: '#495057' }}>{totalVINs}</span>
+            </div>
+            <div className="fee-line" style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between',
+              padding: '6px 0',
+              borderBottom: '1px solid rgba(73, 80, 87, 0.1)'
+            }}>
+              <span style={{ fontWeight: '500' }}>Taxable Vehicles:</span>
+              <span style={{ fontWeight: '600', color: '#495057' }}>{taxableVehiclesCount}</span>
+            </div>
+            <div className="fee-line" style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between',
+              padding: '6px 0',
+              borderBottom: '1px solid rgba(73, 80, 87, 0.1)'
+            }}>
+              <span style={{ fontWeight: '500' }}>Tax Due:</span>
+              <span style={{ fontWeight: '600', color: '#495057' }}>${totalTax.toFixed(2)}</span>
             </div>
             {totalDisposalCredits > 0 && (
-              <div className="fee-line">
-                <span>Disposal Credits:</span>
-                <span>-${totalDisposalCredits.toFixed(2)}</span>
+              <div className="fee-line" style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between',
+                padding: '6px 0',
+                borderBottom: '1px solid rgba(73, 80, 87, 0.1)'
+              }}>
+                <span style={{ fontWeight: '500' }}>Disposal Credits:</span>
+                <span style={{ fontWeight: '600', color: '#dc3545' }}>-${totalDisposalCredits.toFixed(2)}</span>
               </div>
             )}
-            <div className="fee-line">
-              <span>Filing Fee:</span>
-              <span>${filingFee.toFixed(2)}</span>
+            <div className="fee-line" style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between',
+              padding: '6px 0',
+              borderBottom: '1px solid rgba(73, 80, 87, 0.1)'
+            }}>
+              <span style={{ fontWeight: '500' }}>Filing Fee:</span>
+              <span style={{ fontWeight: '600', color: '#495057' }}>${filingFee.toFixed(2)}</span>
             </div>
-            <div className="fee-line">
-              <span>Total Amount:</span>
-              <span>${(Math.max(0, totalTax - totalDisposalCredits) + filingFee).toFixed(2)}</span>
+            <div className="fee-line" style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between',
+              padding: '10px 8px',
+              fontSize: '1rem',
+              backgroundColor: 'rgba(73, 80, 87, 0.05)',
+              marginTop: '6px',
+              borderRadius: '6px',
+              border: '1px solid rgba(73, 80, 87, 0.1)'
+            }}>
+              <span style={{ fontWeight: '700' }}>Total Amount:</span>
+              <span style={{ fontWeight: '700', color: '#495057' }}>${(Math.max(0, totalTax - totalDisposalCredits) + filingFee).toFixed(2)}</span>
             </div>
           </div>
           
           <div style={{ 
             background: '#e3f2fd', 
             padding: '12px', 
-            borderRadius: '4px',
-            fontSize: '0.9rem',
-            color: '#1565c0'
+            borderRadius: '6px',
+            fontSize: '0.85rem',
+            color: '#1565c0',
+            marginTop: '12px',
+            border: '1px solid #bbdefb'
           }}>
             <strong>Note:</strong> The $45.00 filing fee covers electronic submission to the IRS. 
             Your tax payment will be processed separately during submission.
-            {/* Debug info - remove in production */}
-            <div style={{ marginTop: '8px', fontSize: '0.8rem', opacity: 0.7 }}>
-              Debug: Tax=${totalTax.toFixed(2)}, Credits=${totalDisposalCredits.toFixed(2)}, 
-              Net Tax=${Math.max(0, totalTax - totalDisposalCredits).toFixed(2)}
-              <br />
-              Vehicles with disposal: {formData?.vehicles?.filter(v => v.disposal_date).length || 0}
-              <br />
-              Vehicle disposal details: {JSON.stringify(formData?.vehicles?.map(v => ({
-                vin: v.vin.slice(-4),
-                hasDisposal: !!v.disposal_date,
-                credit: v.disposal_credit || 0
-              })) || [])}
-            </div>
           </div>
         </div>
         
@@ -647,85 +656,122 @@ export default function FilePageContent() {
         />
 
         {/* CAPTCHA Section */}
-        <h2 style={{ marginTop: 20 }}>Security Verification</h2>
-        <div style={{ marginTop: 12 }}>
-          {process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY && !isLocalhost ? (
-            <>
-              <ReCaptchaComponent
-                ref={captchaRef}
-                sitekey={process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY}
-                onChange={handleCaptchaChange}
-                onExpired={handleCaptchaExpired}
-                onError={handleCaptchaError}
-                theme="light"
-                size="normal"
-              />
-              {captchaError && (
-                <div style={{ 
-                  color: '#d32f2f', 
-                  fontSize: '0.9rem', 
-                  marginTop: '8px',
-                  fontWeight: '500'
-                }}>
-                  ⚠️ {captchaError}
+        <div style={{ 
+          background: '#f8f9fa',
+          border: '1px solid #e9ecef',
+          borderRadius: '6px',
+          padding: '16px',
+          marginBottom: '16px'
+        }}>
+          <h2 style={{ 
+            marginBottom: '12px',
+            color: '#495057',
+            fontSize: '1.2rem',
+            fontWeight: '600'
+          }}>
+            🔒 Security Verification
+          </h2>
+          <div>
+            {process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY && !isLocalhost ? (
+              <>
+                <ReCaptchaComponent
+                  ref={captchaRef}
+                  sitekey={process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY}
+                  onChange={handleCaptchaChange}
+                  onExpired={handleCaptchaExpired}
+                  onError={handleCaptchaError}
+                  theme="light"
+                  size="normal"
+                />
+                {captchaError && (
+                  <div style={{ 
+                    color: '#d32f2f', 
+                    fontSize: '0.95rem', 
+                    marginTop: '12px',
+                    fontWeight: '500',
+                    padding: '8px 12px',
+                    backgroundColor: '#ffebee',
+                    borderRadius: '6px',
+                    border: '1px solid #ef5350'
+                  }}>
+                    ⚠️ {captchaError}
+                  </div>
+                )}
+                {!captchaToken && (
+                  <div style={{ 
+                    color: '#666', 
+                    fontSize: '0.9rem', 
+                    marginTop: '8px',
+                    fontStyle: 'italic',
+                    padding: '8px 12px',
+                    backgroundColor: '#f5f5f5',
+                    borderRadius: '6px'
+                  }}>
+                    Please complete the CAPTCHA verification above to submit your form.
+                  </div>
+                )}
+              </>
+            ) : (
+              <div style={{ 
+                color: '#2e7d32', 
+                padding: '16px', 
+                backgroundColor: '#e8f5e8', 
+                border: '1px solid #4caf50', 
+                borderRadius: '8px',
+                fontSize: '0.95rem'
+              }}>
+                ℹ️ reCAPTCHA is disabled for localhost development. In production, set NEXT_PUBLIC_RECAPTCHA_SITE_KEY.
+                <div style={{ marginTop: '12px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setCaptchaToken('dev-bypass-token')}
+                    style={{
+                      padding: '8px 16px',
+                      background: '#4caf50',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      fontSize: '0.9rem',
+                      fontWeight: '500',
+                      transition: 'background-color 0.2s'
+                    }}
+                    onMouseOver={(e) => {
+                      e.currentTarget.style.backgroundColor = '#45a049';
+                    }}
+                    onMouseOut={(e) => {
+                      e.currentTarget.style.backgroundColor = '#4caf50';
+                    }}
+                  >
+                    Enable Submission (Dev Mode)
+                  </button>
                 </div>
-              )}
-              {!captchaToken && (
-                <div style={{ 
-                  color: '#666', 
-                  fontSize: '0.85rem', 
-                  marginTop: '4px',
-                  fontStyle: 'italic'
-                }}>
-                  Please complete the CAPTCHA verification above to submit your form.
-                </div>
-              )}
-            </>
-          ) : (
-            <div style={{ 
-              color: '#2e7d32', 
-              padding: '12px', 
-              backgroundColor: '#e8f5e8', 
-              border: '1px solid #2e7d32', 
-              borderRadius: '4px',
-              fontSize: '0.9rem'
-            }}>
-              ℹ️ reCAPTCHA is disabled for localhost development. In production, set NEXT_PUBLIC_RECAPTCHA_SITE_KEY.
-              <div style={{ marginTop: '8px' }}>
-                <button
-                  type="button"
-                  onClick={() => setCaptchaToken('dev-bypass-token')}
-                  style={{
-                    padding: '6px 12px',
-                    background: '#4caf50',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    fontSize: '0.85rem'
-                  }}
-                >
-                  Enable Submission (Dev Mode)
-                </button>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         {/* Submit Actions */}
-        <div className="submit-actions" style={{ marginTop: 20, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <div className="submit-actions" style={{ 
+          marginTop: '16px', 
+          display: 'flex', 
+          gap: '12px', 
+          flexWrap: 'wrap',
+          alignItems: 'center' 
+        }}>
           
           {/* Authentication Status */}
           {!authLoading && (
             <div style={{
               width: '100%',
-              padding: '8px 12px',
+              padding: '10px 12px',
               background: user ? '#d4edda' : '#fff3cd',
               border: `1px solid ${user ? '#c3e6cb' : '#ffeaa7'}`,
-              borderRadius: '4px',
+              borderRadius: '6px',
               color: user ? '#155724' : '#856404',
-              fontSize: '0.9rem',
-              marginBottom: '8px'
+              fontSize: '0.85rem',
+              marginBottom: '10px',
+              fontWeight: '500'
             }}>
               🔐 {user ? `Signed in as: ${user.email}` : 'Authentication required - account will be created automatically during submission'}
             </div>
@@ -734,12 +780,14 @@ export default function FilePageContent() {
           {validationError && (
             <div style={{
               width: '100%',
-              padding: '12px',
+              padding: '12px 14px',
               background: '#f8d7da',
               border: '1px solid #f5c6cb',
-              borderRadius: '4px',
+              borderRadius: '6px',
               color: '#721c24',
-              marginBottom: '12px'
+              marginBottom: '12px',
+              fontSize: '0.85rem',
+              fontWeight: '500'
             }}>
               ⚠️ {validationError}
             </div>
@@ -748,23 +796,28 @@ export default function FilePageContent() {
           <button
             type="button"
             style={{ 
-              padding: '12px 24px',
-              border: '1px solid #007bff',
-              borderRadius: 4,
+              padding: '12px 20px',
+              border: '2px solid #007bff',
+              borderRadius: '6px',
               backgroundColor: '#fff', 
               color: '#007bff', 
-              fontSize: '1rem',
+              fontSize: '0.9rem',
               cursor: 'pointer',
-              fontWeight: '500',
-              transition: 'all 0.2s',
-              minWidth: '200px'
+              fontWeight: '600',
+              transition: 'all 0.2s ease',
+              minWidth: '200px',
+              boxShadow: '0 1px 3px rgba(0, 123, 255, 0.1)'
             }}
             onClick={handlePreviewClick}
             onMouseOver={(e) => {
               e.currentTarget.style.backgroundColor = '#f8f9fa';
+              e.currentTarget.style.transform = 'translateY(-1px)';
+              e.currentTarget.style.boxShadow = '0 2px 6px rgba(0, 123, 255, 0.15)';
             }}
             onMouseOut={(e) => {
               e.currentTarget.style.backgroundColor = '#fff';
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 123, 255, 0.1)';
             }}
           >
             📄 Pay & Preview Form 2290 ($45.00)
@@ -773,35 +826,57 @@ export default function FilePageContent() {
           <button
             type="button"
             style={{ 
-              padding: '12px 24px',
+              padding: '12px 20px',
               border: 'none',
-              borderRadius: 4,
+              borderRadius: '6px',
               backgroundColor: (!authLoading && captchaToken && !isSubmitting) ? '#28a745' : '#cccccc', 
               color: '#fff', 
-              fontSize: '1.1rem',
+              fontSize: '1rem',
               cursor: (!authLoading && captchaToken && !isSubmitting) ? 'pointer' : 'not-allowed',
               opacity: (!authLoading && captchaToken && !isSubmitting) ? 1 : 0.6,
               flex: '1',
-              minWidth: '200px'
+              minWidth: '200px',
+              fontWeight: '600',
+              transition: 'all 0.2s ease',
+              boxShadow: (!authLoading && captchaToken && !isSubmitting) ? '0 1px 3px rgba(40, 167, 69, 0.2)' : 'none'
             }}
             onClick={handleSubmit}
             disabled={authLoading || !captchaToken || isSubmitting}
+            onMouseOver={(e) => {
+              if (!authLoading && captchaToken && !isSubmitting) {
+                e.currentTarget.style.backgroundColor = '#218838';
+                e.currentTarget.style.transform = 'translateY(-1px)';
+                e.currentTarget.style.boxShadow = '0 2px 6px rgba(40, 167, 69, 0.3)';
+              }
+            }}
+            onMouseOut={(e) => {
+              if (!authLoading && captchaToken && !isSubmitting) {
+                e.currentTarget.style.backgroundColor = '#28a745';
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 1px 3px rgba(40, 167, 69, 0.2)';
+              }
+            }}
           >
-            {isSubmitting ? 'Processing...' : 
-             authLoading ? 'Checking Authentication...' :
-             `SUBMIT FORM 2290 ($${(Math.max(0, totalTax - totalDisposalCredits) + filingFee).toFixed(2)})`}
+            {isSubmitting ? '⏳ Processing...' : 
+             authLoading ? '🔍 Checking Authentication...' :
+             `🚀 SUBMIT FORM 2290 ($${(Math.max(0, totalTax - totalDisposalCredits) + filingFee).toFixed(2)})`}
           </button>
           
           {(!captchaToken || authLoading) && (
             <div style={{ 
               alignSelf: 'center',
               color: '#666', 
-              fontSize: '0.85rem',
+              fontSize: '0.8rem',
               fontStyle: 'italic',
               flex: '1',
-              minWidth: '200px'
+              minWidth: '180px',
+              textAlign: 'center',
+              padding: '6px 10px',
+              backgroundColor: '#f8f9fa',
+              borderRadius: '4px',
+              border: '1px solid #e9ecef'
             }}>
-              {authLoading ? 'Checking authentication...' : 'Complete CAPTCHA to enable submission'}
+              {authLoading ? '🔍 Checking authentication...' : '🔒 Complete CAPTCHA to enable submission'}
             </div>
           )}
         </div>

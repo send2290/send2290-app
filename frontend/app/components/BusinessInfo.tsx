@@ -10,20 +10,21 @@ interface BusinessInfoProps {
 export const BusinessInfo: React.FC<BusinessInfoProps> = ({ formData, handleChange }) => {
   return (
     <>
-      <h2>Business Info</h2>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-        <div style={{ position: 'relative' }}>
+      <h2>📋 Business Info</h2>
+      <div style={{ display: 'grid', gap: '6px', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
+        <div style={{ position: 'relative', gridColumn: 'span 2' }}>
           <input
             name="email"
             type="email"
-            placeholder="Email"
+            placeholder="Email Address"
             value={formData.email}
             onChange={handleChange}
             disabled={!!auth.currentUser}
             style={{
               backgroundColor: auth.currentUser ? '#f5f5f5' : 'white',
               color: auth.currentUser ? '#666' : 'black',
-              cursor: auth.currentUser ? 'not-allowed' : 'text'
+              cursor: auth.currentUser ? 'not-allowed' : 'text',
+              width: '100%'
             }}
           />
           {auth.currentUser && (

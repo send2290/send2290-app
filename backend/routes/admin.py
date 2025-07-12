@@ -280,6 +280,88 @@ def download_audit_logs():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@admin_bp.route('/audit-logs/production', methods=['GET'])
+@verify_admin_token
+def get_production_audit_logs():
+    """Get production audit logs for monitoring"""
+    try:
+        import os
+        lines = int(request.args.get('lines', 50))
+        
+        # Production audit log path
+        prod_log_path = os.path.join('Audit', 'productionaudit.log')
+        
+        if not os.path.exists(prod_log_path):
+            return jsonify({
+                "error": "Production audit log not found",
+                "message": "No production activities have been logged yet"
+            }), 404
+        
+        with open(prod_log_path, 'r') as f:
+            all_lines = f.readlines()
+            recent_lines = all_lines[-lines:] if lines > 0 else all_lines
+        
+        return jsonify({
+            "logs": [line.rstrip() for line in recent_lines],
+            "total_lines": len(all_lines),
+            "requested_lines": lines
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@admin_bp.route('/audit-logs/production/download', methods=['GET'])
+@verify_admin_token  
+def download_production_audit_logs():
+    """Download complete production audit logs"""
+    try:
+        import os
+        
+        # Production audit log path
+        prod_log_path = os.path.join('Audit', 'productionaudit.log')
+        
+        if not os.path.exists(prod_log_path):
+            return jsonify({
+                "error": "Production audit log not found"
+            }), 404
+        
+        with open(prod_log_path, 'r') as f:
+            logs = f.read()
+        
+        response = make_response(logs)
+        response.headers['Content-Type'] = 'text/plain'
+        response.headers['Content-Disposition'] = 'attachment; filename=productionaudit.log'
+        return response
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@admin_bp.route('/audit-logs/local', methods=['GET'])
+@verify_admin_token
+def get_local_audit_logs():
+    """Get local audit logs for development monitoring"""
+    try:
+        import os
+        lines = int(request.args.get('lines', 50))
+        
+        # Local audit log path
+        local_log_path = os.path.join('Audit', 'localaudit.log')
+        
+        if not os.path.exists(local_log_path):
+            return jsonify({
+                "error": "Local audit log not found"
+            }), 404
+        
+        with open(local_log_path, 'r') as f:
+            all_lines = f.readlines()
+            recent_lines = all_lines[-lines:] if lines > 0 else all_lines
+        
+        return jsonify({
+            "logs": [line.rstrip() for line in recent_lines],
+            "total_lines": len(all_lines),
+            "requested_lines": lines
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @admin_bp.route('/payment-history', methods=['GET'])
 @verify_admin_token
 def admin_view_payment_history():

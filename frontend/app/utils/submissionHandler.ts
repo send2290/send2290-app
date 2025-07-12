@@ -102,12 +102,6 @@ export const createSubmissionHandler = (
         (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
       const finalCaptchaToken = isLocalhost ? 'localhost-dev-token' : captchaToken;
 
-      // Debug: Log vehicle disposal credits before submission
-      console.log('🔍 Vehicle disposal credits before submission:');
-      formData.vehicles.forEach((vehicle, index) => {
-        console.log(`  Vehicle ${index + 1}: VIN=${vehicle.vin.slice(0, 8)}..., disposal_credit=${vehicle.disposal_credit}`);
-      });
-
       const submissionData = {
         ...formData,
         // Ensure numeric fields are properly converted
@@ -145,9 +139,6 @@ export const createSubmissionHandler = (
         body: JSON.stringify(submissionData),
       });
 
-      console.log("📡 Response status:", response.status); // Debug line
-      console.log("📡 Response headers:", Object.fromEntries(response.headers.entries())); // Debug line
-
       if (!response.ok) {
         let errorMsg = response.statusText;
         try {
@@ -172,7 +163,6 @@ export const createSubmissionHandler = (
       if (contentType && contentType.includes('application/json')) {
         // JSON response - multiple months scenario
         const jsonData = await response.json();
-        console.log("📋 JSON response received:", jsonData);
         
         // Use the simplified message from the backend
         const message = jsonData.redirect_message || "Visit My Filings section to see your files.";
@@ -206,11 +196,7 @@ export const createSubmissionHandler = (
       captchaRef.current?.reset();
       setCaptchaToken(null);
     } catch (error: any) {
-      console.error("❌ Full error object:", error); // Enhanced debug
-      console.error("❌ Error type:", typeof error); // Debug
-      console.error("❌ Error name:", error.name); // Debug
-      console.error("❌ Error message:", error.message); // Debug
-      console.error("❌ Error stack:", error.stack); // Debug
+      console.error("Submission error:", error);
       alert(`Network error: ${error.message}`);
     }
   };

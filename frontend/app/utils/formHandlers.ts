@@ -96,13 +96,11 @@ export const createFormHandler = (
         if (field === 'disposal_date' && value) {
           const credit = calculateDisposalCredit(vv as Vehicle, value);
           vv.disposal_credit = credit;
-          console.log(`Auto-calculated disposal credit for vehicle ${vv.vin}: $${credit}`);
         }
         
         // Clear disposal credit if disposal date is removed
         if (field === 'disposal_date' && !value) {
           vv.disposal_credit = undefined;
-          console.log(`Cleared disposal credit for vehicle ${vv.vin}`);
         }
         
         // Handle category dropdown changes - uncheck relevant checkboxes when category changes away from W
@@ -117,7 +115,6 @@ export const createFormHandler = (
           if (vv.disposal_date) {
             const credit = calculateDisposalCredit(vv as Vehicle, vv.disposal_date);
             vv.disposal_credit = credit;
-            console.log(`Recalculated disposal credit after category change for vehicle ${vv.vin}: $${credit}`);
           }
         }
         
@@ -125,7 +122,6 @@ export const createFormHandler = (
         if (field === 'used_month' && vv.disposal_date) {
           const credit = calculateDisposalCredit(vv as Vehicle, vv.disposal_date);
           vv.disposal_credit = credit;
-          console.log(`Recalculated disposal credit after used_month change for vehicle ${vv.vin}: $${credit}`);
         }
       }
       

@@ -52,8 +52,8 @@ export default function LoginForm() {
   }
 
   return (
-    <div className="bg-white p-6 rounded shadow-md w-full max-w-sm mx-auto">
-      <h2 className="text-2xl font-bold mb-4 text-center">
+    <div className="bg-white p-8 rounded-xl shadow-2xl w-full max-w-md mx-auto border border-gray-100">
+      <h2 className="text-3xl font-bold mb-6 text-center text-gray-800">
         {showReset
           ? 'Reset Password'
           : showRegister
@@ -68,7 +68,7 @@ export default function LoginForm() {
             value={email}
             onChange={e => setEmail(e.target.value)}
             required
-            className="border p-2 w-full mb-3 rounded"
+            className="border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 p-3 w-full mb-4 rounded-lg transition-all duration-200 outline-none"
           />
           <input
             type="password"
@@ -76,25 +76,25 @@ export default function LoginForm() {
             value={password}
             onChange={e => setPassword(e.target.value)}
             required
-            className="border p-2 w-full mb-4 rounded"
+            className="border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 p-3 w-full mb-6 rounded-lg transition-all duration-200 outline-none"
           />
           <button
             type="submit"
-            className="bg-blue-600 text-white py-2 px-4 rounded w-full"
+            className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold py-3 px-6 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-[1.02] focus:outline-none focus:ring-4 focus:ring-blue-300 focus:ring-opacity-50"
           >
             Sign In
           </button>
           <button
             type="button"
             onClick={() => setShowReset(true)}
-            className="mt-2 text-center text-sm text-blue-600 underline w-full"
+            className="mt-3 text-center text-sm text-blue-600 hover:text-blue-800 underline w-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-300 focus:ring-opacity-50 rounded py-1"
           >
             Forgot Password?
           </button>
           <button
             type="button"
             onClick={() => setShowRegister(true)}
-            className="mt-2 text-center text-sm text-blue-600 underline w-full"
+            className="mt-2 text-center text-sm text-blue-600 hover:text-blue-800 underline w-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-300 focus:ring-opacity-50 rounded py-1"
           >
             Create Account
           </button>
@@ -109,7 +109,7 @@ export default function LoginForm() {
             value={email}
             onChange={e => setEmail(e.target.value)}
             required
-            className="border p-2 w-full mb-3 rounded"
+            className="border border-gray-300 focus:border-green-500 focus:ring-2 focus:ring-green-200 p-3 w-full mb-4 rounded-lg transition-all duration-200 outline-none"
           />
           <input
             type="password"
@@ -117,11 +117,11 @@ export default function LoginForm() {
             value={password}
             onChange={e => setPassword(e.target.value)}
             required
-            className="border p-2 w-full mb-4 rounded"
+            className="border border-gray-300 focus:border-green-500 focus:ring-2 focus:ring-green-200 p-3 w-full mb-6 rounded-lg transition-all duration-200 outline-none"
           />
           <button
             type="submit"
-            className="bg-green-600 text-white py-2 px-4 rounded w-full"
+            className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold py-3 px-6 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-[1.02] focus:outline-none focus:ring-4 focus:ring-green-300 focus:ring-opacity-50"
           >
             Create Account
           </button>
@@ -132,7 +132,7 @@ export default function LoginForm() {
               setRegisterSuccess(false)
               setError('')
             }}
-            className="mt-2 text-center text-sm text-blue-600 underline w-full"
+            className="mt-3 text-center text-sm text-blue-600 hover:text-blue-800 underline w-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-300 focus:ring-opacity-50 rounded py-1"
           >
             Back to Login
           </button>
@@ -152,18 +152,18 @@ export default function LoginForm() {
             value={email}
             onChange={e => setEmail(e.target.value)}
             required
-            className="border p-2 w-full mb-3 rounded"
+            className="border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 p-3 w-full mb-6 rounded-lg transition-all duration-200 outline-none"
           />
           <button
             type="submit"
-            className="bg-blue-600 text-white py-2 px-4 rounded w-full"
+            className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold py-3 px-6 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-[1.02] focus:outline-none focus:ring-4 focus:ring-blue-300 focus:ring-opacity-50"
           >
             Send Password Reset Email
           </button>
           <button
             type="button"
             onClick={() => setShowReset(false)}
-            className="mt-2 text-center text-sm text-blue-600 underline w-full"
+            className="mt-3 text-center text-sm text-blue-600 hover:text-blue-800 underline w-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-300 focus:ring-opacity-50 rounded py-1"
           >
             Back to Login
           </button>
